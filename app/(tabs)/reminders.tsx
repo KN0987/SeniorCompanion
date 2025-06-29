@@ -258,8 +258,25 @@ export default function RemindersScreen() {
   };
 
   const toggleReminder = async (id: string) => {
-    const updatedReminders = reminders.map((r) =>
-      r.id === id ? { ...r, isActive: !r.isActive } : r
+    const updatedReminders = await Promise.all(
+      reminders.map(async (r) => {
+        if (r.id === id) {
+          const isActivating = !r.isActive;
+
+          if (isActivating) {
+            const newNotificationIds = await scheduleReminderNotification(r);
+            return {
+              ...r,
+              isActive: true,
+              notificationIds: newNotificationIds,
+            };
+          } else {
+            await cancelNotificationsByIds(r.notificationIds);
+            return { ...r, isActive: false, notificationIds: [] };
+          }
+        }
+        return r;
+      })
     );
     setReminders(updatedReminders);
     await saveReminders(updatedReminders);
