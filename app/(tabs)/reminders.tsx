@@ -1,26 +1,26 @@
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  ScrollView, 
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
   TouchableOpacity,
   Alert,
   Modal,
   TextInput,
-  Switch
+  Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useState, useEffect } from 'react';
-import { 
-  Plus, 
-  Pill, 
-  Activity, 
-  Clock, 
+import { useState, useEffect, useMemo } from 'react';
+import {
+  Plus,
+  Pill,
+  Activity,
+  Clock,
   Calendar,
   Check,
   X,
   Edit2,
-  Trash2
+  Trash2,
 } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { format } from 'date-fns';
@@ -90,7 +90,10 @@ export default function RemindersScreen() {
           },
         ];
         setReminders(sampleReminders);
-        await AsyncStorage.setItem('reminders', JSON.stringify(sampleReminders));
+        await AsyncStorage.setItem(
+          'reminders',
+          JSON.stringify(sampleReminders)
+        );
       }
     } catch (error) {
       console.error('Error loading reminders:', error);
@@ -154,7 +157,9 @@ export default function RemindersScreen() {
 
     let updatedReminders;
     if (editingReminder) {
-      updatedReminders = reminders.map(r => r.id === editingReminder.id ? newReminder : r);
+      updatedReminders = reminders.map((r) =>
+        r.id === editingReminder.id ? newReminder : r
+      );
     } else {
       updatedReminders = [...reminders, newReminder];
     }
@@ -170,21 +175,21 @@ export default function RemindersScreen() {
       'Are you sure you want to delete this reminder?',
       [
         { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Delete', 
+        {
+          text: 'Delete',
           style: 'destructive',
           onPress: async () => {
-            const updatedReminders = reminders.filter(r => r.id !== id);
+            const updatedReminders = reminders.filter((r) => r.id !== id);
             setReminders(updatedReminders);
             await saveReminders(updatedReminders);
-          }
-        }
+          },
+        },
       ]
     );
   };
 
   const toggleReminder = async (id: string) => {
-    const updatedReminders = reminders.map(r => 
+    const updatedReminders = reminders.map((r) =>
       r.id === id ? { ...r, isActive: !r.isActive } : r
     );
     setReminders(updatedReminders);
@@ -192,7 +197,7 @@ export default function RemindersScreen() {
   };
 
   const markCompleted = async (id: string) => {
-    const updatedReminders = reminders.map(r => 
+    const updatedReminders = reminders.map((r) =>
       r.id === id ? { ...r, completed: !r.completed } : r
     );
     setReminders(updatedReminders);
@@ -200,17 +205,18 @@ export default function RemindersScreen() {
   };
 
   const toggleDay = (day: string) => {
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      days: prev.days.includes(day) 
-        ? prev.days.filter(d => d !== day)
-        : [...prev.days, day]
+      days: prev.days.includes(day)
+        ? prev.days.filter((d) => d !== day)
+        : [...prev.days, day],
     }));
   };
 
-  const todayReminders = reminders.filter(r => 
-    r.isActive && r.days.includes(format(new Date(), 'EEE').substring(0, 3))
-  );
+  const todayReminders = useMemo(() => {
+    const today = format(new Date(), 'EEE').substring(0, 3);
+    return reminders.filter((r) => r.isActive && r.days.includes(today));
+  }, [reminders]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -235,41 +241,58 @@ export default function RemindersScreen() {
                 <View style={styles.reminderHeader}>
                   <View style={styles.reminderIcon}>
                     {reminder.type === 'medication' ? (
-                      <Pill size={20} color={reminder.completed ? '#94A3B8' : '#2563EB'} />
+                      <Pill
+                        size={20}
+                        color={reminder.completed ? '#94A3B8' : '#2563EB'}
+                      />
                     ) : (
-                      <Activity size={20} color={reminder.completed ? '#94A3B8' : '#059669'} />
+                      <Activity
+                        size={20}
+                        color={reminder.completed ? '#94A3B8' : '#059669'}
+                      />
                     )}
                   </View>
                   <View style={styles.reminderInfo}>
-                    <Text style={[
-                      styles.reminderTitle,
-                      reminder.completed && styles.completedText
-                    ]}>
+                    <Text
+                      style={[
+                        styles.reminderTitle,
+                        reminder.completed && styles.completedText,
+                      ]}
+                    >
                       {reminder.title}
                     </Text>
                     <View style={styles.reminderMeta}>
                       <Clock size={14} color="#64748B" />
                       <Text style={styles.reminderTime}>{reminder.time}</Text>
                       {reminder.dosage && (
-                        <Text style={styles.reminderDosage}>• {reminder.dosage}</Text>
+                        <Text style={styles.reminderDosage}>
+                          • {reminder.dosage}
+                        </Text>
                       )}
                       {reminder.duration && (
-                        <Text style={styles.reminderDosage}>• {reminder.duration}</Text>
+                        <Text style={styles.reminderDosage}>
+                          • {reminder.duration}
+                        </Text>
                       )}
                     </View>
                   </View>
                   <TouchableOpacity
                     style={[
                       styles.completeButton,
-                      reminder.completed && styles.completedButton
+                      reminder.completed && styles.completedButton,
                     ]}
                     onPress={() => markCompleted(reminder.id)}
                   >
-                    <Check size={16} color={reminder.completed ? '#059669' : '#CBD5E1'} />
+                    <Check
+                      size={16}
+                      color={reminder.completed ? '#059669' : '#CBD5E1'}
+                    />
                   </TouchableOpacity>
                 </View>
                 {reminder.description && (
-                  <Text style={styles.reminderDescription}>{reminder.description}</Text>
+                  <Text style={styles.reminderDescription}>
+                    {reminder.description}
+                  </Text>
                 )}
               </View>
             ))
@@ -280,20 +303,35 @@ export default function RemindersScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>All Reminders</Text>
           {reminders.map((reminder) => (
-            <View key={reminder.id} style={styles.allReminderCard}>
+            <View
+              key={`${reminder.id}-${reminder.title}-${reminder.time}-${
+                reminder.description
+              }-${reminder.dosage}-${reminder.duration}-${reminder.days.join(
+                ','
+              )}`}
+              style={styles.allReminderCard}
+            >
               <View style={styles.reminderHeader}>
                 <View style={styles.reminderIcon}>
                   {reminder.type === 'medication' ? (
-                    <Pill size={20} color={reminder.isActive ? '#2563EB' : '#94A3B8'} />
+                    <Pill
+                      size={20}
+                      color={reminder.isActive ? '#2563EB' : '#94A3B8'}
+                    />
                   ) : (
-                    <Activity size={20} color={reminder.isActive ? '#059669' : '#94A3B8'} />
+                    <Activity
+                      size={20}
+                      color={reminder.isActive ? '#059669' : '#94A3B8'}
+                    />
                   )}
                 </View>
                 <View style={styles.reminderInfo}>
-                  <Text style={[
-                    styles.reminderTitle,
-                    !reminder.isActive && styles.inactiveText
-                  ]}>
+                  <Text
+                    style={[
+                      styles.reminderTitle,
+                      !reminder.isActive && styles.inactiveText,
+                    ]}
+                  >
                     {reminder.title}
                   </Text>
                   <View style={styles.reminderMeta}>
@@ -357,7 +395,9 @@ export default function RemindersScreen() {
               <TextInput
                 style={styles.formInput}
                 value={formData.title}
-                onChangeText={(text) => setFormData(prev => ({ ...prev, title: text }))}
+                onChangeText={(text) =>
+                  setFormData((prev) => ({ ...prev, title: text }))
+                }
                 placeholder="Enter reminder title"
               />
             </View>
@@ -368,30 +408,46 @@ export default function RemindersScreen() {
                 <TouchableOpacity
                   style={[
                     styles.typeButton,
-                    formData.type === 'medication' && styles.typeButtonActive
+                    formData.type === 'medication' && styles.typeButtonActive,
                   ]}
-                  onPress={() => setFormData(prev => ({ ...prev, type: 'medication' }))}
+                  onPress={() =>
+                    setFormData((prev) => ({ ...prev, type: 'medication' }))
+                  }
                 >
-                  <Pill size={20} color={formData.type === 'medication' ? 'white' : '#64748B'} />
-                  <Text style={[
-                    styles.typeButtonText,
-                    formData.type === 'medication' && styles.typeButtonTextActive
-                  ]}>
+                  <Pill
+                    size={20}
+                    color={formData.type === 'medication' ? 'white' : '#64748B'}
+                  />
+                  <Text
+                    style={[
+                      styles.typeButtonText,
+                      formData.type === 'medication' &&
+                        styles.typeButtonTextActive,
+                    ]}
+                  >
                     Medication
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[
                     styles.typeButton,
-                    formData.type === 'exercise' && styles.typeButtonActive
+                    formData.type === 'exercise' && styles.typeButtonActive,
                   ]}
-                  onPress={() => setFormData(prev => ({ ...prev, type: 'exercise' }))}
+                  onPress={() =>
+                    setFormData((prev) => ({ ...prev, type: 'exercise' }))
+                  }
                 >
-                  <Activity size={20} color={formData.type === 'exercise' ? 'white' : '#64748B'} />
-                  <Text style={[
-                    styles.typeButtonText,
-                    formData.type === 'exercise' && styles.typeButtonTextActive
-                  ]}>
+                  <Activity
+                    size={20}
+                    color={formData.type === 'exercise' ? 'white' : '#64748B'}
+                  />
+                  <Text
+                    style={[
+                      styles.typeButtonText,
+                      formData.type === 'exercise' &&
+                        styles.typeButtonTextActive,
+                    ]}
+                  >
                     Exercise
                   </Text>
                 </TouchableOpacity>
@@ -403,7 +459,9 @@ export default function RemindersScreen() {
               <TextInput
                 style={styles.formInput}
                 value={formData.time}
-                onChangeText={(text) => setFormData(prev => ({ ...prev, time: text }))}
+                onChangeText={(text) =>
+                  setFormData((prev) => ({ ...prev, time: text }))
+                }
                 placeholder="09:00"
               />
             </View>
@@ -416,14 +474,17 @@ export default function RemindersScreen() {
                     key={day}
                     style={[
                       styles.dayButton,
-                      formData.days.includes(day) && styles.dayButtonActive
+                      formData.days.includes(day) && styles.dayButtonActive,
                     ]}
                     onPress={() => toggleDay(day)}
                   >
-                    <Text style={[
-                      styles.dayButtonText,
-                      formData.days.includes(day) && styles.dayButtonTextActive
-                    ]}>
+                    <Text
+                      style={[
+                        styles.dayButtonText,
+                        formData.days.includes(day) &&
+                          styles.dayButtonTextActive,
+                      ]}
+                    >
                       {day}
                     </Text>
                   </TouchableOpacity>
@@ -437,7 +498,9 @@ export default function RemindersScreen() {
                 <TextInput
                   style={styles.formInput}
                   value={formData.dosage}
-                  onChangeText={(text) => setFormData(prev => ({ ...prev, dosage: text }))}
+                  onChangeText={(text) =>
+                    setFormData((prev) => ({ ...prev, dosage: text }))
+                  }
                   placeholder="e.g., 2 tablets, 5ml"
                 />
               </View>
@@ -449,7 +512,9 @@ export default function RemindersScreen() {
                 <TextInput
                   style={styles.formInput}
                   value={formData.duration}
-                  onChangeText={(text) => setFormData(prev => ({ ...prev, duration: text }))}
+                  onChangeText={(text) =>
+                    setFormData((prev) => ({ ...prev, duration: text }))
+                  }
                   placeholder="e.g., 30 min, 1 hour"
                 />
               </View>
@@ -460,7 +525,9 @@ export default function RemindersScreen() {
               <TextInput
                 style={[styles.formInput, styles.textArea]}
                 value={formData.description}
-                onChangeText={(text) => setFormData(prev => ({ ...prev, description: text }))}
+                onChangeText={(text) =>
+                  setFormData((prev) => ({ ...prev, description: text }))
+                }
                 placeholder="Additional notes..."
                 multiline
                 numberOfLines={3}
