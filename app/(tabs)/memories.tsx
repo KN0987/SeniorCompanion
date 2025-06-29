@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState, useEffect } from 'react';
-import { Camera, Plus } from 'lucide-react-native';
+import { Camera, Plus, Play } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { format } from 'date-fns';
@@ -41,6 +41,7 @@ export default function MemoriesScreen() {
   const [locationInput, setLocationInput] = useState('');
   const [descriptionInput, setDescriptionInput] = useState('');
   const [selectedMemory, setSelectedMemory] = useState<Memory | null>(null);
+  const [presentationMode, setPresentationMode] = useState(false);
 
   useEffect(() => {
     loadMemories();
@@ -150,6 +151,15 @@ export default function MemoriesScreen() {
     }
   };
 
+  const startPresentation = () => {
+    if (memories.length === 0) {
+      Alert.alert('No memories', 'Add some memories to start a presentation');
+      return;
+    }
+    setPresentationMode(true);
+    setSelectedMemory(memories[0]);
+  };
+
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
       <SafeAreaView style={styles.container}>
@@ -216,8 +226,15 @@ export default function MemoriesScreen() {
           </TouchableWithoutFeedback>
         </Modal>
         <View style={styles.header}>
-          <Text style={styles.title}>My Memories</Text>
+          <Text style={styles.title}>My Memo</Text>
           <View style={styles.headerButtons}>
+            <TouchableOpacity
+              style={styles.headerButton}
+              onPress={startPresentation}
+              disabled={loading || memories.length === 0}
+            >
+              <Play size={24} color={memories.length === 0 ? "#CBD5E1" : "#2563EB"} />
+            </TouchableOpacity>
             <TouchableOpacity
               style={styles.headerButton}
               onPress={capturePhoto}
