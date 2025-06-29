@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState, useEffect } from 'react';
-import { Camera, Plus, Play, ChevronLeft } from 'lucide-react-native';
+import { Camera, Plus, Play, ChevronLeft, Trash2 } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { format } from 'date-fns';
@@ -160,6 +160,30 @@ export default function MemoriesScreen() {
     setSelectedMemory(memories[0]);
   };
 
+  const deleteMemory = async (memoryId: string) => {
+    Alert.alert(
+      'Delete Memory',
+      'Are you sure you want to delete this memory? This action cannot be undone.',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            const updatedMemories = memories.filter(memory => memory.id !== memoryId);
+            setMemories(updatedMemories);
+            await saveMemories(updatedMemories);
+            setSelectedMemory(null);
+            Alert.alert('Success', 'Memory deleted successfully');
+          },
+        },
+      ]
+    );
+  };
+
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
       <SafeAreaView style={styles.container}>
@@ -294,12 +318,17 @@ export default function MemoriesScreen() {
             >
               <ChevronLeft size={24} color="#000" />
             </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.fullScreenDelete}
+              onPress={() => selectedMemory && deleteMemory(selectedMemory.id)}
+            >
+              <Trash2 size={20} color="#EF4444" />
+            </TouchableOpacity>
             {selectedMemory && (
               <>
                 <Image source={{ uri: selectedMemory.image }} style={styles.fullScreenImage} />
                 <View style={styles.fullScreenDescription}>
                   <Text style={styles.fullScreenDescriptionText}>{selectedMemory.description}</Text>
-
                   <Text style={styles.fullScreenDescriptionDate}>{format(new Date(selectedMemory.date), 'PP')}</Text>
                 </View>
               </>
@@ -563,21 +592,33 @@ const styles = StyleSheet.create({
     bottom: 60,
     left: 20,
     right: 20,
-    backgroundColor: 'rgba(0,0,0,0.7)',
+    backgroundColor: 'white',
     borderRadius: 12,
     padding: 16,
   },
   fullScreenDescriptionText: {
-    color: 'white',
+    color: 'black',
     fontSize: 20,
     textAlign: 'center',
     fontFamily: 'Inter-Medium',
   },
   fullScreenDescriptionDate: {
-    color: 'white',
+    color: 'black',
     fontSize: 18,
     textAlign: 'center',
     marginBottom: 8,
     fontFamily: 'Inter-Medium',
+  },
+    fullScreenDelete: {
+    position: 'absolute',
+    top: 60,
+    right: 20,
+    zIndex: 1,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
