@@ -8,6 +8,7 @@ import {
   Modal,
   TextInput,
   Switch,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState, useEffect, useMemo } from 'react';
@@ -138,7 +139,13 @@ export default function RemindersScreen() {
 
   const saveReminder = async () => {
     if (!formData.title.trim() || formData.days.length === 0) {
-      Alert.alert('Error', 'Please fill in all required fields');
+      const message = 'Please fill in all required fields.';
+
+      if (Platform.OS === 'web') {
+        alert(message);
+      } else {
+        Alert.alert('Validation Error', message);
+      }
       return;
     }
 
@@ -169,23 +176,47 @@ export default function RemindersScreen() {
     setShowModal(false);
   };
 
+  async function deleteReminderById(
+    id: string,
+    reminders: Reminder[],
+    setReminders: React.Dispatch<React.SetStateAction<Reminder[]>>,
+    saveReminders: (reminders: Reminder[]) => Promise<void>
+  ) {
+    const updatedReminders = reminders.filter((r) => r.id !== id);
+    setReminders(updatedReminders);
+    await saveReminders(updatedReminders);
+  }
+
   const deleteReminder = async (id: string) => {
-    Alert.alert(
-      'Delete Reminder',
-      'Are you sure you want to delete this reminder?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            const updatedReminders = reminders.filter((r) => r.id !== id);
-            setReminders(updatedReminders);
-            await saveReminders(updatedReminders);
+    console.log('Deleting reminder with ID:', id);
+    if (Platform.OS === 'web') {
+      const confirmed = window.confirm(
+        'Are you sure you want to delete this reminder?'
+      );
+      if (!confirmed) return;
+
+      await deleteReminderById(id, reminders, setReminders, saveReminders);
+    } else {
+      Alert.alert(
+        'Delete Reminder',
+        'Are you sure you want to delete this reminder?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Delete',
+            style: 'destructive',
+            onPress: async () => {
+              await deleteReminderById(
+                id,
+                reminders,
+                setReminders,
+                saveReminders
+              );
+            },
           },
-        },
-      ]
-    );
+        ]
+      );
+    }
   };
 
   const toggleReminder = async (id: string) => {
@@ -391,7 +422,7 @@ export default function RemindersScreen() {
 
           <ScrollView style={styles.modalContent}>
             <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Title</Text>
+              <Text style={styles.formLabel}>Title*</Text>
               <TextInput
                 style={styles.formInput}
                 value={formData.title}
@@ -467,7 +498,7 @@ export default function RemindersScreen() {
             </View>
 
             <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Days</Text>
+              <Text style={styles.formLabel}>Days*</Text>
               <View style={styles.daysContainer}>
                 {DAYS.map((day) => (
                   <TouchableOpacity
