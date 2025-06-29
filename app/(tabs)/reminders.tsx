@@ -25,6 +25,7 @@ import {
 } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { format } from 'date-fns';
+import * as Notifications from 'expo-notifications';
 
 interface Reminder {
   id: string;
@@ -139,14 +140,22 @@ export default function RemindersScreen() {
 
   const saveReminder = async () => {
     if (!formData.title.trim() || formData.days.length === 0) {
-      const message = 'Please fill in all required fields.';
-
       if (Platform.OS === 'web') {
-        alert(message);
+        window.alert('Please fill in all required fields');
       } else {
-        Alert.alert('Validation Error', message);
+        Alert.alert('Error', 'Please fill in all required fields');
       }
       return;
+    }
+
+    if (editingReminder) {
+      console.log(
+        // TODO: Handle cancellation of old notifications
+        // Optional: save notificationId(s) in reminder object to cancel on edit
+        console.log(
+          'Editing reminder - canceling old notifications (manually handled if stored)'
+        )
+      );
     }
 
     const newReminder: Reminder = {
@@ -174,6 +183,7 @@ export default function RemindersScreen() {
     setReminders(updatedReminders);
     await saveReminders(updatedReminders);
     setShowModal(false);
+    scheduleReminderNotification(newReminder);
   };
 
   async function deleteReminderById(
@@ -188,7 +198,6 @@ export default function RemindersScreen() {
   }
 
   const deleteReminder = async (id: string) => {
-    console.log('Deleting reminder with ID:', id);
     if (Platform.OS === 'web') {
       const confirmed = window.confirm(
         'Are you sure you want to delete this reminder?'
@@ -248,6 +257,27 @@ export default function RemindersScreen() {
     const today = format(new Date(), 'EEE').substring(0, 3);
     return reminders.filter((r) => r.isActive && r.days.includes(today));
   }, [reminders]);
+
+  async function scheduleReminderNotification(reminder: Reminder) {
+    const [hour, minute] = reminder.time.split(':').map(Number);
+    const trigger = new Date();
+    trigger.setHours(hour);
+    trigger.setMinutes(minute);
+    trigger.setSeconds(0);
+
+    if (trigger <= new Date()) {
+      trigger.setDate(trigger.getDate() + 1);
+    }
+
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: reminder.title,
+        body: reminder.description || `Reminder for your ${reminder.type}`,
+        data: { reminderId: reminder.id },
+      },
+      trigger,
+    });
+  }
 
   return (
     <SafeAreaView style={styles.container}>
