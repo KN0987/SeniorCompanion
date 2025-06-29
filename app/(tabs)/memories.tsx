@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState, useEffect } from 'react';
-import { Camera, Plus, Play } from 'lucide-react-native';
+import { Camera, Plus, Play, ChevronLeft } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { format } from 'date-fns';
@@ -284,24 +284,26 @@ export default function MemoriesScreen() {
         <Modal
           visible={!!selectedMemory}
           animationType="fade"
-          transparent
+          transparent={false}
           onRequestClose={() => setSelectedMemory(null)}
         >
-          <View style={styles.detailOverlay}>
-            <View style={styles.detailContent}>
-              <TouchableOpacity
-                style={styles.detailClose}
-                onPress={() => setSelectedMemory(null)}
-              >
-                <Text style={{ fontSize: 18, color: '#2563EB', fontWeight: 'bold' }}>Close</Text>
-              </TouchableOpacity>
-              {selectedMemory && (
-                <>
-                  <Image source={{ uri: selectedMemory.image }} style={styles.detailImage} />
-                  <Text style={styles.memoryDescription}>{selectedMemory.description}</Text>
-                </>
-              )}
-            </View>
+          <View style={styles.fullScreenOverlay}>
+            <TouchableOpacity
+              style={styles.fullScreenClose}
+              onPress={() => setSelectedMemory(null)}
+            >
+              <ChevronLeft size={24} color="#000" />
+            </TouchableOpacity>
+            {selectedMemory && (
+              <>
+                <Image source={{ uri: selectedMemory.image }} style={styles.fullScreenImage} />
+                <View style={styles.fullScreenDescription}>
+                  <Text style={styles.fullScreenDescriptionText}>{selectedMemory.description}</Text>
+
+                  <Text style={styles.fullScreenDescriptionDate}>{format(new Date(selectedMemory.date), 'PP')}</Text>
+                </View>
+              </>
+            )}
           </View>
         </Modal>
       </SafeAreaView>
@@ -532,5 +534,50 @@ const styles = StyleSheet.create({
   detailClose: {
     alignSelf: 'flex-end',
     marginBottom: 8,
+  },
+  fullScreenOverlay: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  fullScreenClose: {
+    position: 'absolute',
+    top: 60,
+    left: 20,
+    zIndex: 1,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fullScreenImage: {
+    width: '100%',
+    height: '80%',
+    resizeMode: 'contain',
+  },
+  fullScreenDescription: {
+    position: 'absolute',
+    bottom: 60,
+    left: 20,
+    right: 20,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    borderRadius: 12,
+    padding: 16,
+  },
+  fullScreenDescriptionText: {
+    color: 'white',
+    fontSize: 20,
+    textAlign: 'center',
+    fontFamily: 'Inter-Medium',
+  },
+  fullScreenDescriptionDate: {
+    color: 'white',
+    fontSize: 18,
+    textAlign: 'center',
+    marginBottom: 8,
+    fontFamily: 'Inter-Medium',
   },
 });
