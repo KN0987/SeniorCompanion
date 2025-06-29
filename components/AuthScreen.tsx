@@ -1,150 +1,48 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  TextInput,
   Alert,
   Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Fingerprint, Lock, Eye, EyeOff } from 'lucide-react-native';
+import { Fingerprint } from 'lucide-react-native';
 import { useAuth } from '../contexts/AuthContext';
 
 const { width } = Dimensions.get('window');
 
-export default function AuthScreen() {
-  const { authenticate, authenticateWithPasscode, setPasscode, hasPasscode } = useAuth();
-  const [mode, setMode] = useState<'login' | 'setup'>('login');
-  const [passcode, setPasscodeInput] = useState('');
-  const [confirmPasscode, setConfirmPasscode] = useState('');
-  const [showPasscode, setShowPasscode] = useState(false);
+// Assume protectionEnabled comes from context or props (wire up in settings)
+export default function AuthScreen({ protectionEnabled }: { protectionEnabled: boolean }) {
+  const { authenticate } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
+  const [authAttempted, setAuthAttempted] = useState(false);
 
   useEffect(() => {
-    if (!hasPasscode) {
-      setMode('setup');
-    } else {
-      // Try biometric authentication first
+    if (protectionEnabled) {
       handleBiometricAuth();
     }
-  }, [hasPasscode]);
+  }, [protectionEnabled]);
 
   const handleBiometricAuth = async () => {
     setIsLoading(true);
     const success = await authenticate();
-    if (!success && hasPasscode) {
-      // If biometric fails, show passcode input
-      setMode('login');
-    }
     setIsLoading(false);
-  };
-
-  const handlePasscodeLogin = async () => {
-    if (passcode.length < 4) {
-      Alert.alert('Error', 'Please enter a valid passcode');
-      return;
-    }
-
-    const success = await authenticateWithPasscode(passcode);
-    if (success) {
-      Alert.alert('Success', 'Welcome back!');
-    } else {
-      Alert.alert('Error', 'Incorrect passcode');
-      setPasscodeInput('');
+    setAuthAttempted(true);
+    if (!success) {
+      Alert.alert('Authentication Failed', 'Could not verify your identity.');
     }
   };
 
-  const handlePasscodeSetup = async () => {
-    if (passcode.length < 4) {
-      Alert.alert('Error', 'Passcode must be at least 4 characters');
-      return;
-    }
+  if (!protectionEnabled) {
+    // App is accessible, no auth required
+    return null;
+  }
 
-    if (passcode !== confirmPasscode) {
-      Alert.alert('Error', 'Passcodes do not match');
-      return;
-    }
-
-    try {
-      await setPasscode(passcode);
-      Alert.alert('Success', 'Passcode set successfully!', [
-        { text: 'OK', onPress: () => setMode('login') }
-      ]);
-    } catch (error) {
-      Alert.alert('Error', 'Failed to set passcode');
-    }
-  };
-
-  const renderPasscodeSetup = () => (
-    <View style={styles.container}>
-      <LinearGradient
-        colors={['#2563EB', '#3B82F6']}
-        style={styles.gradient}
-      >
-        <SafeAreaView style={styles.content}>
-          <View style={styles.header}>
-            <Lock size={64} color="white" />
-            <Text style={styles.title}>Set Up Security</Text>
-            <Text style={styles.subtitle}>
-              Create a passcode to protect your personal health data
-            </Text>
-          </View>
-
-          <View style={styles.form}>
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Create Passcode</Text>
-              <View style={styles.inputContainer}>
-                <TextInput
-                  style={styles.input}
-                  value={passcode}
-                  onChangeText={setPasscodeInput}
-                  placeholder="Enter at least 4 characters"
-                  placeholderTextColor="rgba(255, 255, 255, 0.6)"
-                  secureTextEntry={!showPasscode}
-                  maxLength={20}
-                />
-                <TouchableOpacity
-                  style={styles.eyeButton}
-                  onPress={() => setShowPasscode(!showPasscode)}
-                >
-                  {showPasscode ? (
-                    <EyeOff size={20} color="rgba(255, 255, 255, 0.8)" />
-                  ) : (
-                    <Eye size={20} color="rgba(255, 255, 255, 0.8)" />
-                  )}
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Confirm Passcode</Text>
-              <TextInput
-                style={styles.input}
-                value={confirmPasscode}
-                onChangeText={setConfirmPasscode}
-                placeholder="Re-enter your passcode"
-                placeholderTextColor="rgba(255, 255, 255, 0.6)"
-                secureTextEntry={!showPasscode}
-                maxLength={20}
-              />
-            </View>
-
-            <TouchableOpacity
-              style={styles.primaryButton}
-              onPress={handlePasscodeSetup}
-            >
-              <Text style={styles.primaryButtonText}>Set Passcode</Text>
-            </TouchableOpacity>
-          </View>
-        </SafeAreaView>
-      </LinearGradient>
-    </View>
-  );
-
-  const renderLogin = () => (
+  // Show biometric/system passcode auth screen
+  return (
     <View style={styles.container}>
       <LinearGradient
         colors={['#2563EB', '#3B82F6']}
@@ -153,43 +51,17 @@ export default function AuthScreen() {
         <SafeAreaView style={styles.content}>
           <View style={styles.header}>
             <Fingerprint size={64} color="white" />
-            <Text style={styles.title}>Welcome Back</Text>
+            <Text style={styles.title}>App Locked</Text>
             <Text style={styles.subtitle}>
-              Use Face ID or enter your passcode to continue
+              Unlock with Face ID, Touch ID, or your phone passcode
             </Text>
           </View>
 
           <View style={styles.form}>
             <TouchableOpacity
-              style={styles.biometricButton}
+              style={styles.primaryButton}
               onPress={handleBiometricAuth}
               disabled={isLoading}
-            >
-              <Fingerprint size={24} color="#2563EB" />
-              <Text style={styles.biometricButtonText}>Use Face ID</Text>
-            </TouchableOpacity>
-
-            <View style={styles.divider}>
-              <View style={styles.dividerLine} />
-              <Text style={styles.dividerText}>or</Text>
-              <View style={styles.dividerLine} />
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Enter Passcode</Text>
-              <TextInput
-                style={styles.input}
-                value={passcode}
-                onChangeText={setPasscodeInput}
-                placeholder="Enter your passcode"
-                placeholderTextColor="rgba(255, 255, 255, 0.6)"
-                secureTextEntry={!showPasscode}
-              />
-            </View>
-
-            <TouchableOpacity
-              style={styles.primaryButton}
-              onPress={handlePasscodeLogin}
             >
               <Text style={styles.primaryButtonText}>Unlock</Text>
             </TouchableOpacity>
@@ -198,8 +70,6 @@ export default function AuthScreen() {
       </LinearGradient>
     </View>
   );
-
-  return mode === 'setup' ? renderPasscodeSetup() : renderLogin();
 }
 
 const styles = StyleSheet.create({
@@ -237,35 +107,6 @@ const styles = StyleSheet.create({
   form: {
     paddingBottom: 40,
   },
-  inputGroup: {
-    marginBottom: 20,
-  },
-  inputLabel: {
-    fontSize: 16,
-    color: 'white',
-    fontFamily: 'Inter-SemiBold',
-    marginBottom: 8,
-  },
-  inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    position: 'relative',
-  },
-  input: {
-    flex: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 16,
-    color: 'white',
-    fontFamily: 'Inter-Regular',
-  },
-  eyeButton: {
-    position: 'absolute',
-    right: 16,
-    padding: 4,
-  },
   primaryButton: {
     backgroundColor: 'white',
     borderRadius: 12,
@@ -278,36 +119,5 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#2563EB',
     fontFamily: 'Inter-SemiBold',
-  },
-  biometricButton: {
-    backgroundColor: 'white',
-    borderRadius: 12,
-    paddingVertical: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  biometricButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#2563EB',
-    fontFamily: 'Inter-SemiBold',
-  },
-  divider: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: 24,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.3)',
-  },
-  dividerText: {
-    color: 'rgba(255, 255, 255, 0.8)',
-    paddingHorizontal: 16,
-    fontSize: 14,
-    fontFamily: 'Inter-Regular',
   },
 });

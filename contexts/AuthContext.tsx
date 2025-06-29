@@ -10,18 +10,38 @@ interface AuthContextType {
   setPasscode: (passcode: string) => Promise<void>;
   hasPasscode: boolean;
   logout: () => void;
+  protectionEnabled: boolean;
+  setProtectionEnabled: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
   const [hasPasscode, setHasPasscode] = useState(false);
+  const [protectionEnabled, setProtectionEnabledState] = useState(false); // Default: disabled
 
+  // Load protectionEnabled from SecureStore on mount
   useEffect(() => {
+    const loadProtectionEnabled = async () => {
+      try {
+        const stored = await SecureStore.getItemAsync('protectionEnabled');
+        if (stored !== null) {
+          setProtectionEnabledState(stored === 'true');
+        }
+      } catch (e) {
+        console.error('Error loading protectionEnabled:', e);
+      }
+    };
+    loadProtectionEnabled();
     checkAuthSetup();
   }, []);
+
+  // Save protectionEnabled to SecureStore whenever it changes
+  useEffect(() => {
+    SecureStore.setItemAsync('protectionEnabled', protectionEnabled ? 'true' : 'false');
+  }, [protectionEnabled]);
 
   const checkAuthSetup = async () => {
     try {
@@ -89,6 +109,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsAuthenticated(false);
   };
 
+  // Use this setter everywhere, support both value and updater function
+  const setProtectionEnabled: React.Dispatch<React.SetStateAction<boolean>> = (value) => {
+    if (typeof value === 'function') {
+      setProtectionEnabledState(prev => {
+        const next = (value as (prev: boolean) => boolean)(prev);
+        SecureStore.setItemAsync('protectionEnabled', next ? 'true' : 'false');
+        return next;
+      });
+    } else {
+      setProtectionEnabledState(value);
+      SecureStore.setItemAsync('protectionEnabled', value ? 'true' : 'false');
+    }
+  };
+
   return (
     <AuthContext.Provider value={{
       isAuthenticated,
@@ -98,6 +132,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setPasscode,
       hasPasscode,
       logout,
+      protectionEnabled,
+      setProtectionEnabled,
     }}>
       {children}
     </AuthContext.Provider>
