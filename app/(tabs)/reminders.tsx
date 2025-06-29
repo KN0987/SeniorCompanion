@@ -40,6 +40,9 @@ interface Reminder {
   duration?: string;
   completed?: boolean;
   notificationIds?: string[];
+  repeatMode?: 'weekly' | 'interval';
+  intervalMinutes?: number; // For repeatMode === 'interval'
+  repeat?: boolean; // Whether to repeat on scheduled days
 }
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -56,7 +59,11 @@ export default function RemindersScreen() {
     description: '',
     dosage: '',
     duration: '',
+    repeatMode: 'weekly' as 'weekly' | 'interval',
+    intervalMinutes: undefined as number | undefined,
+    repeat: true,
   });
+
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [pickerTime, setPickerTime] = useState(new Date());
 
@@ -124,6 +131,9 @@ export default function RemindersScreen() {
       description: '',
       dosage: '',
       duration: '',
+      repeatMode: 'weekly',
+      repeat: true,
+      intervalMinutes: undefined,
     });
     setShowModal(true);
   };
@@ -138,12 +148,19 @@ export default function RemindersScreen() {
       description: reminder.description || '',
       dosage: reminder.dosage || '',
       duration: reminder.duration || '',
+      repeatMode: reminder.repeatMode || 'weekly',
+      repeat: reminder.repeat ?? true,
+      intervalMinutes: reminder.intervalMinutes ?? 240,
     });
     setShowModal(true);
   };
 
   const saveReminder = async () => {
-    if (!formData.title.trim() || formData.days.length === 0) {
+    if (
+      !formData.title.trim() ||
+      (formData.repeatMode === 'weekly' && formData.days.length === 0) ||
+      (formData.repeatMode === 'interval' && !Number(formData.intervalMinutes))
+    ) {
       if (Platform.OS === 'web') {
         window.alert('Please fill in all required fields');
       } else {
@@ -167,6 +184,12 @@ export default function RemindersScreen() {
       dosage: formData.type === 'medication' ? formData.dosage : undefined,
       duration: formData.type === 'exercise' ? formData.duration : undefined,
       completed: false,
+      repeatMode: formData.repeatMode,
+      intervalMinutes:
+        formData.repeatMode === 'interval'
+          ? formData.intervalMinutes
+          : undefined,
+      repeat: formData.repeat,
     };
 
     const notificationIds = await scheduleReminderNotification(newReminder);
@@ -278,26 +301,45 @@ export default function RemindersScreen() {
     reminder: Reminder
   ): Promise<string[]> {
     const notificationIds: string[] = [];
+    const [hour, minute] = reminder.time.split(':').map(Number);
 
-    for (const day of reminder.days) {
-      const [hour, minute] = reminder.time.split(':').map(Number);
-      const expoWeekday = getExpoWeekday(day);
-
-      const weeklyId = await Notifications.scheduleNotificationAsync({
+    if (reminder.repeatMode === 'interval' && reminder.intervalMinutes) {
+      const intervalId = await Notifications.scheduleNotificationAsync({
         content: {
           title: reminder.title,
           body: reminder.description || `Reminder for your ${reminder.type}`,
           data: { reminderId: reminder.id },
         },
         trigger: {
-          weekday: expoWeekday,
-          hour,
-          minute,
+          seconds: reminder.intervalMinutes * 60,
           repeats: true,
+          type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
         },
       });
+      notificationIds.push(intervalId);
+    } else {
+      for (const day of reminder.days) {
+        const expoWeekday = getExpoWeekday(day);
 
-      notificationIds.push(weeklyId);
+        const trigger = reminder.repeat
+          ? {
+              weekday: expoWeekday,
+              hour,
+              minute,
+              type: Notifications.SchedulableTriggerInputTypes.WEEKLY,
+            }
+          : getNextTriggerDate(day, hour, minute);
+
+        const id = await Notifications.scheduleNotificationAsync({
+          content: {
+            title: reminder.title,
+            body: reminder.description || `Reminder for your ${reminder.type}`,
+            data: { reminderId: reminder.id },
+          },
+          trigger,
+        });
+        notificationIds.push(id);
+      }
     }
 
     return notificationIds;
@@ -402,7 +444,12 @@ export default function RemindersScreen() {
                     </Text>
                     <View style={styles.reminderMeta}>
                       <Clock size={14} color="#64748B" />
-                      <Text style={styles.reminderTime}>{reminder.time}</Text>
+                      <Text style={styles.reminderTime}>
+                        {reminder.repeatMode === 'interval' &&
+                        reminder.intervalMinutes
+                          ? `Every ${reminder.intervalMinutes} min`
+                          : reminder.time}
+                      </Text>
                       {reminder.dosage && (
                         <Text style={styles.reminderDosage}>
                           • {reminder.dosage}
@@ -479,10 +526,17 @@ export default function RemindersScreen() {
                     </Text>
                     <View style={styles.reminderMeta}>
                       <Clock size={14} color="#64748B" />
-                      <Text style={styles.reminderTime}>{reminder.time}</Text>
-                      <Text style={styles.reminderDays}>
-                        • {reminder.days.join(', ')}
+                      <Text style={styles.reminderTime}>
+                        {reminder.repeatMode === 'interval' &&
+                        reminder.intervalMinutes
+                          ? `Every ${reminder.intervalMinutes} min`
+                          : reminder.time}
                       </Text>
+                      {reminder.repeatMode === 'weekly' && (
+                        <Text style={styles.reminderDays}>
+                          • {reminder.days.join(', ')}
+                        </Text>
+                      )}
                     </View>
                   </View>
                   <View style={styles.reminderActions}>
@@ -597,59 +651,141 @@ export default function RemindersScreen() {
               </View>
             </View>
 
+            {/* Repeat Mode Picker */}
             <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Time</Text>
-              <TouchableOpacity
-                style={styles.formInput}
-                onPress={() => setShowTimePicker(true)}
-              >
-                <Text style={{ fontSize: 16 }}>
-                  {format(pickerTime, 'hh:mm a')}
-                </Text>
-              </TouchableOpacity>
-              {showTimePicker && (
-                <DateTimePicker
-                  value={pickerTime}
-                  mode="time"
-                  is24Hour={false}
-                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                  onChange={(event, selectedDate) => {
-                    if (Platform.OS !== 'ios') setShowTimePicker(false);
-                    if (selectedDate) {
-                      setPickerTime(selectedDate);
-                      const formatted = format(selectedDate, 'HH:mm');
-                      setFormData((prev) => ({ ...prev, time: formatted }));
-                    }
-                  }}
-                />
-              )}
-            </View>
-
-            <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Days*</Text>
-              <View style={styles.daysContainer}>
-                {DAYS.map((day) => (
-                  <TouchableOpacity
-                    key={day}
+              <Text style={styles.formLabel}>Repeat Mode</Text>
+              <View style={{ flexDirection: 'row', gap: 12 }}>
+                <TouchableOpacity
+                  style={[
+                    styles.typeButton,
+                    formData.repeatMode === 'weekly' && styles.typeButtonActive,
+                  ]}
+                  onPress={() =>
+                    setFormData((prev) => ({ ...prev, repeatMode: 'weekly' }))
+                  }
+                >
+                  <Text
                     style={[
-                      styles.dayButton,
-                      formData.days.includes(day) && styles.dayButtonActive,
+                      styles.typeButtonText,
+                      formData.repeatMode === 'weekly' &&
+                        styles.typeButtonTextActive,
                     ]}
-                    onPress={() => toggleDay(day)}
                   >
-                    <Text
-                      style={[
-                        styles.dayButtonText,
-                        formData.days.includes(day) &&
-                          styles.dayButtonTextActive,
-                      ]}
-                    >
-                      {day}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+                    Specific Days
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.typeButton,
+                    formData.repeatMode === 'interval' &&
+                      styles.typeButtonActive,
+                  ]}
+                  onPress={() =>
+                    setFormData((prev) => ({ ...prev, repeatMode: 'interval' }))
+                  }
+                >
+                  <Text
+                    style={[
+                      styles.typeButtonText,
+                      formData.repeatMode === 'interval' &&
+                        styles.typeButtonTextActive,
+                    ]}
+                  >
+                    Every X Hours
+                  </Text>
+                </TouchableOpacity>
               </View>
             </View>
+
+            {formData.repeatMode === 'weekly' && (
+              <>
+                <View style={styles.formGroup}>
+                  <Text style={styles.formLabel}>Time</Text>
+                  <TouchableOpacity
+                    style={styles.formInput}
+                    onPress={() => setShowTimePicker(true)}
+                  >
+                    <Text style={{ fontSize: 16 }}>
+                      {format(pickerTime, 'hh:mm a')}
+                    </Text>
+                  </TouchableOpacity>
+                  {showTimePicker && (
+                    <DateTimePicker
+                      value={pickerTime}
+                      mode="time"
+                      is24Hour={false}
+                      display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                      onChange={(event, selectedDate) => {
+                        if (Platform.OS !== 'ios') setShowTimePicker(false);
+                        if (selectedDate) {
+                          setPickerTime(selectedDate);
+                          const formatted = format(selectedDate, 'HH:mm');
+                          setFormData((prev) => ({
+                            ...prev,
+                            time: formatted,
+                          }));
+                        }
+                      }}
+                    />
+                  )}
+                </View>
+
+                <View style={styles.formGroup}>
+                  <Text style={styles.formLabel}>Days*</Text>
+                  <View style={styles.daysContainer}>
+                    {DAYS.map((day) => (
+                      <TouchableOpacity
+                        key={day}
+                        style={[
+                          styles.dayButton,
+                          formData.days.includes(day) && styles.dayButtonActive,
+                        ]}
+                        onPress={() => toggleDay(day)}
+                      >
+                        <Text
+                          style={[
+                            styles.dayButtonText,
+                            formData.days.includes(day) &&
+                              styles.dayButtonTextActive,
+                          ]}
+                        >
+                          {day}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+
+                <View style={styles.formGroup}>
+                  <Text style={styles.formLabel}>Repeat Weekly?</Text>
+                  <Switch
+                    value={formData.repeat}
+                    onValueChange={(val) =>
+                      setFormData((prev) => ({ ...prev, repeat: val }))
+                    }
+                  />
+                </View>
+              </>
+            )}
+
+            {formData.repeatMode === 'interval' && (
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Repeat every (minutes)</Text>
+                <TextInput
+                  style={styles.formInput}
+                  value={formData.intervalMinutes?.toString()}
+                  onChangeText={(text) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      intervalMinutes: parseInt(text) || 0,
+                    }))
+                  }
+                  keyboardType="numeric"
+                  placeholder="e.g., 240 for every 4 hours"
+                />
+              </View>
+            )}
 
             {formData.type === 'medication' && (
               <View style={styles.formGroup}>
