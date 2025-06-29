@@ -152,14 +152,8 @@ export default function RemindersScreen() {
       return;
     }
 
-    if (editingReminder) {
-      console.log(
-        // TODO: Handle cancellation of old notifications
-        // Optional: save notificationId(s) in reminder object to cancel on edit
-        console.log(
-          'Editing reminder - canceling old notifications (manually handled if stored)'
-        )
-      );
+    if (editingReminder && editingReminder.notificationIds) {
+      await cancelNotificationsByIds(editingReminder.notificationIds);
     }
 
     const newReminder: Reminder = {
@@ -198,6 +192,12 @@ export default function RemindersScreen() {
     setReminders: React.Dispatch<React.SetStateAction<Reminder[]>>,
     saveReminders: (reminders: Reminder[]) => Promise<void>
   ) {
+    const reminderToDelete = reminders.find((r) => r.id === id);
+
+    if (reminderToDelete?.notificationIds) {
+      await cancelNotificationsByIds(reminderToDelete.notificationIds);
+    }
+
     const updatedReminders = reminders.filter((r) => r.id !== id);
     setReminders(updatedReminders);
     await saveReminders(updatedReminders);
@@ -280,10 +280,10 @@ export default function RemindersScreen() {
     const notificationIds: string[] = [];
 
     for (const day of reminder.days) {
-      const expoWeekday = getExpoWeekday(day);
       const [hour, minute] = reminder.time.split(':').map(Number);
+      const expoWeekday = getExpoWeekday(day);
 
-      const notificationId = await Notifications.scheduleNotificationAsync({
+      const weeklyId = await Notifications.scheduleNotificationAsync({
         content: {
           title: reminder.title,
           body: reminder.description || `Reminder for your ${reminder.type}`,
@@ -297,34 +297,24 @@ export default function RemindersScreen() {
         },
       });
 
-      notificationIds.push(notificationId);
+      notificationIds.push(weeklyId);
     }
 
     return notificationIds;
   }
 
   // Helper function to get next date for a specific day name + time string (HH:mm)
-  function getNextTriggerDate(day: string, time: string): Date {
-    const [hour, minute] = time.split(':').map(Number);
+  function getNextTriggerDate(day: string, hour: number, minute: number): Date {
     const today = new Date();
     const dayIndex = DAYS.indexOf(day); // Mon=0 ... Sun=6
-
-    // date-fns weekday: 0=Sunday ... 6=Saturday
-    // Our DAYS is Mon=0 so offset needed
-    // Let's normalize so Sunday=0 (JS) and Mon=1 (ISO)
-    // For simplicity, convert to 0=Sunday for calculation:
-
     const jsDayIndex = (dayIndex + 1) % 7; // Mon=1 ... Sun=0
-
-    // Start from today, set to target day
     const triggerDate = new Date(today);
     triggerDate.setHours(hour, minute, 0, 0);
 
-    // Calculate days until the target weekday
     const diff = (jsDayIndex + 7 - triggerDate.getDay()) % 7;
-    if (diff === 0 && triggerDate <= today) {
-      // Today but time passed, schedule for next week
-      triggerDate.setDate(triggerDate.getDate() + 7);
+    const now = new Date();
+    if (triggerDate.getTime() <= now.getTime()) {
+      triggerDate.setDate(triggerDate.getDate() + (diff === 0 ? 7 : diff));
     } else {
       triggerDate.setDate(triggerDate.getDate() + diff);
     }
@@ -350,6 +340,20 @@ export default function RemindersScreen() {
         return 7;
       default:
         return 1;
+    }
+  }
+
+  async function cancelNotificationsByIds(
+    notificationIds: string[] | undefined
+  ) {
+    if (!notificationIds) return;
+
+    for (const id of notificationIds) {
+      try {
+        await Notifications.cancelScheduledNotificationAsync(id);
+      } catch (error) {
+        console.warn('Error cancelling notification', id, error);
+      }
     }
   }
 
