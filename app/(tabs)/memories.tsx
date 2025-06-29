@@ -14,11 +14,12 @@ import {
   StyleSheet,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useState, useEffect } from 'react';
-import { Camera, Plus, Play, ChevronLeft, Trash2 } from 'lucide-react-native';
+import { useState, useEffect, useRef } from 'react';
+import { Camera, Plus, Play, ChevronLeft, Trash2, Volume2, VolumeX } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { format } from 'date-fns';
+import { Audio } from 'expo-av';
 
 const { width } = Dimensions.get('window');
 const IMAGE_MARGIN = 1;
@@ -42,10 +43,113 @@ export default function MemoriesScreen() {
   const [descriptionInput, setDescriptionInput] = useState('');
   const [selectedMemory, setSelectedMemory] = useState<Memory | null>(null);
   const [presentationMode, setPresentationMode] = useState(false);
+  const [currentPresentationIndex, setCurrentPresentationIndex] = useState(0);
+  const [musicPlaying, setMusicPlaying] = useState(false);
+  const presentationTimerRef = useRef<NodeJS.Timeout | number | null>(null);
+  const soundRef = useRef<Audio.Sound | null>(null);
 
   useEffect(() => {
     loadMemories();
+    setupAudio();
   }, []);
+
+  useEffect(() => {
+    return () => {
+      if (presentationTimerRef.current) {
+        clearTimeout(presentationTimerRef.current);
+      }
+      if (soundRef.current) {
+        soundRef.current.unloadAsync();
+      }
+    };
+  }, []);
+
+  const setupAudio = async () => {
+    try {
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+        staysActiveInBackground: true,
+        playsInSilentModeIOS: true,
+        shouldDuckAndroid: true,
+        playThroughEarpieceAndroid: false,
+      });
+    } catch (error) {
+      console.error('Error setting up audio:', error);
+    }
+  };
+
+  const loadBackgroundMusic = async () => {
+    try {
+      if (soundRef.current) {
+        await soundRef.current.unloadAsync();
+      }
+
+      // Replace with your music file
+      // For local file: require('./assets/your-music.mp3')
+      // For remote URL: { uri: 'https://example.com/music.mp3' }
+      const { sound } = await Audio.Sound.createAsync(
+        // Example: using a gentle piano melody for presentations
+        { uri: 'https://www.soundjay.com/misc/sounds/bell-ringing-05.wav' },
+        {
+          shouldPlay: false,
+          isLooping: true,
+          volume: 0.3,
+        }
+      );
+      
+      soundRef.current = sound;
+      return sound;
+    } catch (error) {
+      console.error('Error loading background music:', error);
+      Alert.alert('Audio Error', 'Failed to load background music');
+      return null;
+    }
+  };
+
+  const playBackgroundMusic = async () => {
+    try {
+      if (!soundRef.current) {
+        await loadBackgroundMusic();
+      }
+      
+      if (soundRef.current) {
+        await soundRef.current.playAsync();
+        setMusicPlaying(true);
+      }
+    } catch (error) {
+      console.error('Error playing music:', error);
+    }
+  };
+
+  const pauseBackgroundMusic = async () => {
+    try {
+      if (soundRef.current) {
+        await soundRef.current.pauseAsync();
+        setMusicPlaying(false);
+      }
+    } catch (error) {
+      console.error('Error pausing music:', error);
+    }
+  };
+
+  const stopBackgroundMusic = async () => {
+    try {
+      if (soundRef.current) {
+        await soundRef.current.stopAsync();
+        setMusicPlaying(false);
+      }
+    } catch (error) {
+      console.error('Error stopping music:', error);
+    }
+  };
+
+  const toggleMusic = async () => {
+    if (musicPlaying) {
+      await pauseBackgroundMusic();
+    } else {
+      await playBackgroundMusic();
+    }
+  };
 
   const loadMemories = async () => {
     try {
@@ -151,13 +255,71 @@ export default function MemoriesScreen() {
     }
   };
 
-  const startPresentation = () => {
+  const startPresentation = async () => {
     if (memories.length === 0) {
       Alert.alert('No memories', 'Add some memories to start a presentation');
       return;
     }
     setPresentationMode(true);
+    setCurrentPresentationIndex(0);
     setSelectedMemory(memories[0]);
+    startPresentationTimer();
+    
+    // Start background music
+    await playBackgroundMusic();
+  };
+
+  const startPresentationTimer = () => {
+    presentationTimerRef.current = setTimeout(() => {
+      nextPresentationSlide();
+    }, 3000); // 3 seconds
+  };
+
+  const nextPresentationSlide = () => {
+    if (presentationTimerRef.current) {
+      clearTimeout(presentationTimerRef.current);
+    }
+
+    setCurrentPresentationIndex(prevIndex => {
+      const nextIndex = prevIndex + 1;
+      
+      if (nextIndex >= memories.length) {
+        // End of presentation
+        endPresentation();
+        return prevIndex; // Don't change the index if ending
+      } else {
+        setSelectedMemory(memories[nextIndex]);
+        // Start the next timer
+        startPresentationTimer();
+        return nextIndex;
+      }
+    });
+  };
+
+  const endPresentation = async () => {
+    setPresentationMode(false);
+    setSelectedMemory(null);
+    setCurrentPresentationIndex(0);
+    if (presentationTimerRef.current) {
+      clearTimeout(presentationTimerRef.current);
+    }
+    
+    // Stop background music
+    await stopBackgroundMusic();
+    
+    Alert.alert('Presentation Complete', 'You\'ve viewed all your memories!');
+  };
+
+  const stopPresentation = async () => {
+    setPresentationMode(false);
+    setSelectedMemory(null);
+    setCurrentPresentationIndex(0);
+    if (presentationTimerRef.current) {
+      clearTimeout(presentationTimerRef.current);
+    }
+    
+    // Stop background music
+    await stopBackgroundMusic();
   };
 
   const deleteMemory = async (memoryId: string) => {
@@ -249,6 +411,7 @@ export default function MemoriesScreen() {
             </View>
           </TouchableWithoutFeedback>
         </Modal>
+        
         <View style={styles.header}>
           <Text style={styles.title}>My Memo</Text>
           <View style={styles.headerButtons}>
@@ -309,21 +472,57 @@ export default function MemoriesScreen() {
           visible={!!selectedMemory}
           animationType="fade"
           transparent={false}
-          onRequestClose={() => setSelectedMemory(null)}
+          onRequestClose={() => {
+            if (presentationMode) {
+              stopPresentation();
+            } else {
+              setSelectedMemory(null);
+            }
+          }}
         >
           <View style={styles.fullScreenOverlay}>
-            <TouchableOpacity
-              style={styles.fullScreenClose}
-              onPress={() => setSelectedMemory(null)}
-            >
-              <ChevronLeft size={24} color="#000" />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.fullScreenDelete}
-              onPress={() => selectedMemory && deleteMemory(selectedMemory.id)}
-            >
-              <Trash2 size={20} color="#EF4444" />
-            </TouchableOpacity>
+            {!presentationMode && (
+              <TouchableOpacity
+                style={styles.fullScreenClose}
+                onPress={() => setSelectedMemory(null)}
+              >
+                <ChevronLeft size={24} color="#000" />
+              </TouchableOpacity>
+            )}
+            
+            {!presentationMode && (
+              <TouchableOpacity
+                style={styles.fullScreenDelete}
+                onPress={() => selectedMemory && deleteMemory(selectedMemory.id)}
+              >
+                <Trash2 size={20} color="#EF4444" />
+              </TouchableOpacity>
+            )}
+            
+            {presentationMode && (
+              <View style={styles.presentationControls}>
+                <TouchableOpacity
+                  style={styles.musicButton}
+                  onPress={toggleMusic}
+                >
+                  {musicPlaying ? (
+                    <Volume2 size={20} color="#2563EB" />
+                  ) : (
+                    <VolumeX size={20} color="#64748B" />
+                  )}
+                </TouchableOpacity>
+                <Text style={styles.presentationCounter}>
+                  {currentPresentationIndex + 1} / {memories.length}
+                </Text>
+                <TouchableOpacity
+                  style={styles.presentationButton}
+                  onPress={stopPresentation}
+                >
+                  <Text style={styles.presentationButtonText}>Exit</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+            
             {selectedMemory && (
               <>
                 <Image source={{ uri: selectedMemory.image }} style={styles.fullScreenImage} />
@@ -609,7 +808,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     fontFamily: 'Inter-Medium',
   },
-    fullScreenDelete: {
+  fullScreenDelete: {
     position: 'absolute',
     top: 60,
     right: 20,
@@ -620,5 +819,43 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(239, 68, 68, 0.1)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  presentationControls: {
+    position: 'absolute',
+    top: 60,
+    right: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    zIndex: 1,
+  },
+  presentationButton: {
+    backgroundColor: 'rgba(226, 62, 17, 0.9)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  presentationButtonText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  presentationCounter: {
+    color: '#000',
+    fontSize: 14,
+    fontWeight: '600',
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  musicButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
   },
 });
