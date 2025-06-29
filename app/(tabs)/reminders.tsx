@@ -565,7 +565,10 @@ export default function RemindersScreen() {
                       </Text>
                       {reminder.repeatMode === 'weekly' && (
                         <Text style={styles.reminderDays}>
-                          • {reminder.days.join(', ')}
+                          •{' '}
+                          {DAYS.filter((d) => reminder.days.includes(d)).join(
+                            ', '
+                          )}
                         </Text>
                       )}
                     </View>
