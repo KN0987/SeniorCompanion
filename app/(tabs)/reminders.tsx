@@ -258,8 +258,18 @@ export default function RemindersScreen() {
 
   const todayReminders = useMemo(() => {
     const today = format(new Date(), 'EEE').substring(0, 3);
-    return reminders.filter((r) => r.isActive && r.days.includes(today));
+
+    return reminders
+      .filter((r) => r.isActive && r.days.includes(today))
+      .sort((a, b) => {
+        return timeStringToMinutes(a.time) - timeStringToMinutes(b.time);
+      });
   }, [reminders]);
+
+  function timeStringToMinutes(time: string): number {
+    const [hour, minute] = time.split(':').map(Number);
+    return hour * 60 + minute;
+  }
 
   async function scheduleReminderNotification(reminder: Reminder) {
     console.log('time', reminder.time);
@@ -370,71 +380,75 @@ export default function RemindersScreen() {
         {/* All Reminders */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>All Reminders</Text>
-          {reminders.map((reminder) => (
-            <View
-              key={`${reminder.id}-${reminder.title}-${reminder.time}-${
-                reminder.description
-              }-${reminder.dosage}-${reminder.duration}-${reminder.days.join(
-                ','
-              )}`}
-              style={styles.allReminderCard}
-            >
-              <View style={styles.reminderHeader}>
-                <View style={styles.reminderIcon}>
-                  {reminder.type === 'medication' ? (
-                    <Pill
-                      size={20}
-                      color={reminder.isActive ? '#2563EB' : '#94A3B8'}
-                    />
-                  ) : (
-                    <Activity
-                      size={20}
-                      color={reminder.isActive ? '#059669' : '#94A3B8'}
-                    />
-                  )}
-                </View>
-                <View style={styles.reminderInfo}>
-                  <Text
-                    style={[
-                      styles.reminderTitle,
-                      !reminder.isActive && styles.inactiveText,
-                    ]}
-                  >
-                    {reminder.title}
-                  </Text>
-                  <View style={styles.reminderMeta}>
-                    <Clock size={14} color="#64748B" />
-                    <Text style={styles.reminderTime}>{reminder.time}</Text>
-                    <Text style={styles.reminderDays}>
-                      • {reminder.days.join(', ')}
+          {[...reminders]
+            .sort((a, b) => {
+              return timeStringToMinutes(a.time) - timeStringToMinutes(b.time);
+            })
+            .map((reminder) => (
+              <View
+                key={`${reminder.id}-${reminder.title}-${reminder.time}-${
+                  reminder.description
+                }-${reminder.dosage}-${reminder.duration}-${reminder.days.join(
+                  ','
+                )}`}
+                style={styles.allReminderCard}
+              >
+                <View style={styles.reminderHeader}>
+                  <View style={styles.reminderIcon}>
+                    {reminder.type === 'medication' ? (
+                      <Pill
+                        size={20}
+                        color={reminder.isActive ? '#2563EB' : '#94A3B8'}
+                      />
+                    ) : (
+                      <Activity
+                        size={20}
+                        color={reminder.isActive ? '#059669' : '#94A3B8'}
+                      />
+                    )}
+                  </View>
+                  <View style={styles.reminderInfo}>
+                    <Text
+                      style={[
+                        styles.reminderTitle,
+                        !reminder.isActive && styles.inactiveText,
+                      ]}
+                    >
+                      {reminder.title}
                     </Text>
+                    <View style={styles.reminderMeta}>
+                      <Clock size={14} color="#64748B" />
+                      <Text style={styles.reminderTime}>{reminder.time}</Text>
+                      <Text style={styles.reminderDays}>
+                        • {reminder.days.join(', ')}
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={styles.reminderActions}>
+                    <Switch
+                      value={reminder.isActive}
+                      onValueChange={() => toggleReminder(reminder.id)}
+                      trackColor={{ false: '#E2E8F0', true: '#DBEAFE' }}
+                      thumbColor={reminder.isActive ? '#2563EB' : '#94A3B8'}
+                    />
                   </View>
                 </View>
-                <View style={styles.reminderActions}>
-                  <Switch
-                    value={reminder.isActive}
-                    onValueChange={() => toggleReminder(reminder.id)}
-                    trackColor={{ false: '#E2E8F0', true: '#DBEAFE' }}
-                    thumbColor={reminder.isActive ? '#2563EB' : '#94A3B8'}
-                  />
+                <View style={styles.actionButtons}>
+                  <TouchableOpacity
+                    style={styles.actionButton}
+                    onPress={() => editReminder(reminder)}
+                  >
+                    <Edit2 size={16} color="#64748B" />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.actionButton}
+                    onPress={() => deleteReminder(reminder.id)}
+                  >
+                    <Trash2 size={16} color="#DC2626" />
+                  </TouchableOpacity>
                 </View>
               </View>
-              <View style={styles.actionButtons}>
-                <TouchableOpacity
-                  style={styles.actionButton}
-                  onPress={() => editReminder(reminder)}
-                >
-                  <Edit2 size={16} color="#64748B" />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.actionButton}
-                  onPress={() => deleteReminder(reminder.id)}
-                >
-                  <Trash2 size={16} color="#DC2626" />
-                </TouchableOpacity>
-              </View>
-            </View>
-          ))}
+            ))}
         </View>
       </ScrollView>
 
