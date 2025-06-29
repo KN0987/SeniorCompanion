@@ -26,6 +26,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { format } from 'date-fns';
 import * as Notifications from 'expo-notifications';
+import DateTimePicker from '@react-native-community/datetimepicker';
 
 interface Reminder {
   id: string;
@@ -55,6 +56,8 @@ export default function RemindersScreen() {
     dosage: '',
     duration: '',
   });
+  const [showTimePicker, setShowTimePicker] = useState(false);
+  const [pickerTime, setPickerTime] = useState(new Date());
 
   useEffect(() => {
     loadReminders();
@@ -259,14 +262,15 @@ export default function RemindersScreen() {
   }, [reminders]);
 
   async function scheduleReminderNotification(reminder: Reminder) {
+    console.log('time', reminder.time);
     const [hour, minute] = reminder.time.split(':').map(Number);
-    const trigger = new Date();
-    trigger.setHours(hour);
-    trigger.setMinutes(minute);
-    trigger.setSeconds(0);
+    const triggerDate = new Date();
+    triggerDate.setHours(hour);
+    triggerDate.setMinutes(minute);
+    triggerDate.setSeconds(0);
 
-    if (trigger <= new Date()) {
-      trigger.setDate(trigger.getDate() + 1);
+    if (triggerDate <= new Date()) {
+      triggerDate.setDate(triggerDate.getDate() + 1);
     }
 
     await Notifications.scheduleNotificationAsync({
@@ -275,7 +279,10 @@ export default function RemindersScreen() {
         body: reminder.description || `Reminder for your ${reminder.type}`,
         data: { reminderId: reminder.id },
       },
-      trigger,
+      trigger: {
+        type: 'date',
+        value: triggerDate,
+      },
     });
   }
 
@@ -517,14 +524,30 @@ export default function RemindersScreen() {
 
             <View style={styles.formGroup}>
               <Text style={styles.formLabel}>Time</Text>
-              <TextInput
+              <TouchableOpacity
                 style={styles.formInput}
-                value={formData.time}
-                onChangeText={(text) =>
-                  setFormData((prev) => ({ ...prev, time: text }))
-                }
-                placeholder="09:00"
-              />
+                onPress={() => setShowTimePicker(true)}
+              >
+                <Text style={{ fontSize: 16 }}>
+                  {format(pickerTime, 'hh:mm a')}
+                </Text>
+              </TouchableOpacity>
+              {showTimePicker && (
+                <DateTimePicker
+                  value={pickerTime}
+                  mode="time"
+                  is24Hour={false}
+                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  onChange={(event, selectedDate) => {
+                    if (Platform.OS !== 'ios') setShowTimePicker(false);
+                    if (selectedDate) {
+                      setPickerTime(selectedDate);
+                      const formatted = format(selectedDate, 'HH:mm');
+                      setFormData((prev) => ({ ...prev, time: formatted }));
+                    }
+                  }}
+                />
+              )}
             </View>
 
             <View style={styles.formGroup}>
