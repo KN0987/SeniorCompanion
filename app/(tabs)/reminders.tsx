@@ -39,6 +39,7 @@ interface Reminder {
   dosage?: string;
   duration?: string;
   completed?: boolean;
+  notificationIds?: string[];
 }
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -174,6 +175,9 @@ export default function RemindersScreen() {
       completed: false,
     };
 
+    const notificationIds = await scheduleReminderNotification(newReminder);
+    newReminder.notificationIds = notificationIds;
+
     let updatedReminders;
     if (editingReminder) {
       updatedReminders = reminders.map((r) =>
@@ -186,7 +190,6 @@ export default function RemindersScreen() {
     setReminders(updatedReminders);
     await saveReminders(updatedReminders);
     setShowModal(false);
-    scheduleReminderNotification(newReminder);
   };
 
   async function deleteReminderById(
@@ -271,29 +274,83 @@ export default function RemindersScreen() {
     return hour * 60 + minute;
   }
 
-  async function scheduleReminderNotification(reminder: Reminder) {
-    console.log('time', reminder.time);
-    const [hour, minute] = reminder.time.split(':').map(Number);
-    const triggerDate = new Date();
-    triggerDate.setHours(hour);
-    triggerDate.setMinutes(minute);
-    triggerDate.setSeconds(0);
+  async function scheduleReminderNotification(
+    reminder: Reminder
+  ): Promise<string[]> {
+    const notificationIds: string[] = [];
 
-    if (triggerDate <= new Date()) {
-      triggerDate.setDate(triggerDate.getDate() + 1);
+    for (const day of reminder.days) {
+      const expoWeekday = getExpoWeekday(day);
+      const [hour, minute] = reminder.time.split(':').map(Number);
+
+      const notificationId = await Notifications.scheduleNotificationAsync({
+        content: {
+          title: reminder.title,
+          body: reminder.description || `Reminder for your ${reminder.type}`,
+          data: { reminderId: reminder.id },
+        },
+        trigger: {
+          weekday: expoWeekday,
+          hour,
+          minute,
+          repeats: true,
+        },
+      });
+
+      notificationIds.push(notificationId);
     }
 
-    await Notifications.scheduleNotificationAsync({
-      content: {
-        title: reminder.title,
-        body: reminder.description || `Reminder for your ${reminder.type}`,
-        data: { reminderId: reminder.id },
-      },
-      trigger: {
-        type: 'date',
-        value: triggerDate,
-      },
-    });
+    return notificationIds;
+  }
+
+  // Helper function to get next date for a specific day name + time string (HH:mm)
+  function getNextTriggerDate(day: string, time: string): Date {
+    const [hour, minute] = time.split(':').map(Number);
+    const today = new Date();
+    const dayIndex = DAYS.indexOf(day); // Mon=0 ... Sun=6
+
+    // date-fns weekday: 0=Sunday ... 6=Saturday
+    // Our DAYS is Mon=0 so offset needed
+    // Let's normalize so Sunday=0 (JS) and Mon=1 (ISO)
+    // For simplicity, convert to 0=Sunday for calculation:
+
+    const jsDayIndex = (dayIndex + 1) % 7; // Mon=1 ... Sun=0
+
+    // Start from today, set to target day
+    const triggerDate = new Date(today);
+    triggerDate.setHours(hour, minute, 0, 0);
+
+    // Calculate days until the target weekday
+    const diff = (jsDayIndex + 7 - triggerDate.getDay()) % 7;
+    if (diff === 0 && triggerDate <= today) {
+      // Today but time passed, schedule for next week
+      triggerDate.setDate(triggerDate.getDate() + 7);
+    } else {
+      triggerDate.setDate(triggerDate.getDate() + diff);
+    }
+
+    return triggerDate;
+  }
+
+  function getExpoWeekday(day: string): number {
+    switch (day) {
+      case 'Sun':
+        return 1;
+      case 'Mon':
+        return 2;
+      case 'Tue':
+        return 3;
+      case 'Wed':
+        return 4;
+      case 'Thu':
+        return 5;
+      case 'Fri':
+        return 6;
+      case 'Sat':
+        return 7;
+      default:
+        return 1;
+    }
   }
 
   return (
