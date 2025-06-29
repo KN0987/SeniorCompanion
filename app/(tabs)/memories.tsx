@@ -1,25 +1,29 @@
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  ScrollView, 
+import {
+  View,
+  Text,
   TouchableOpacity,
   Image,
   Dimensions,
   Alert,
   Modal,
   TextInput,
-  ActivityIndicator
+  ActivityIndicator,
+  FlatList,
+  Keyboard,
+  TouchableWithoutFeedback,
+  StyleSheet,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState, useEffect } from 'react';
-import { Camera, Plus, Calendar, MapPin } from 'lucide-react-native';
+import { Camera, Plus } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { format } from 'date-fns';
 
-
 const { width } = Dimensions.get('window');
+const IMAGE_MARGIN = 1;
+const NUM_COLUMNS = 3;
+const HORIZONTAL_PADDING = 20;
 
 interface Memory {
   id: string;
@@ -36,6 +40,7 @@ export default function MemoriesScreen() {
   const [pendingImage, setPendingImage] = useState<string | null>(null);
   const [locationInput, setLocationInput] = useState('');
   const [descriptionInput, setDescriptionInput] = useState('');
+  const [selectedMemory, setSelectedMemory] = useState<Memory | null>(null);
 
   useEffect(() => {
     loadMemories();
@@ -113,158 +118,177 @@ export default function MemoriesScreen() {
   };
 
   const capturePhoto = async () => {
-  try {
-    setLoading(true);
+    try {
+      setLoading(true);
 
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission needed', 'Please grant permission to access your camera');
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission needed', 'Please grant permission to access your camera');
+        setLoading(false);
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 1,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        setPendingImage(result.assets[0].uri);
+        setLocationInput('');
+        setDescriptionInput('');
+        setModalVisible(true);
+        setLoading(false);
+      } else {
+        setLoading(false);
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Failed to capture photo');
+      console.error('Error capturing photo:', error);
       setLoading(false);
-      return;
     }
-
-    const result = await ImagePicker.launchCameraAsync({
-      allowsEditing: true,
-      aspect: [4, 3],
-      quality: 1,
-    });
-
-    if (!result.canceled && result.assets[0]) {
-      setPendingImage(result.assets[0].uri);
-      setLocationInput('');
-      setDescriptionInput('');
-      setModalVisible(true);
-      setLoading(false);
-
-    } else {
-      setLoading(false);
-    }
-  } catch (error) {
-    Alert.alert('Error', 'Failed to capture photo');
-    console.error('Error capturing photo:', error);
-    setLoading(false);
-  }
-};
+  };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <Modal
-        visible={modalVisible}
-        animationType="slide"
-        transparent
-        onRequestClose={() => {
-          setModalVisible(false);
-          setPendingImage(null);
-          setLoading(false);
-        }}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Edit Memory Details</Text>
-            {pendingImage && (
-              <Image source={{ uri: pendingImage }} style={styles.modalImage} />
-            )}
-            <TextInput
-              style={styles.input}
-              placeholder="Location"
-              value={locationInput}
-              onChangeText={setLocationInput}
-            />
-            <TextInput
-              style={[styles.input, { height: 80 }]}
-              placeholder="Description"
-              value={descriptionInput}
-              onChangeText={setDescriptionInput}
-              multiline
-            />
-            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 12 }}>
-              <TouchableOpacity
-                style={[styles.modalButton, { backgroundColor: '#E5E7EB' }]}
-                onPress={() => {
-                  setModalVisible(false);
-                  setPendingImage(null);
-                  setLoading(false);
-                }}
-                disabled={loading}
-              >
-                <Text style={{ color: '#1E293B', fontWeight: '600' }}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.modalButton}
-                onPress={handleSaveMemory}
-                disabled={loading}
-              >
-                {loading ? (
-                  <ActivityIndicator color="white" />
-                ) : (
-                  <Text style={{ color: 'white', fontWeight: '600' }}>Save</Text>
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+      <SafeAreaView style={styles.container}>
+        <Modal
+          visible={modalVisible}
+          animationType="slide"
+          transparent
+          onRequestClose={() => {
+            setModalVisible(false);
+            setPendingImage(null);
+            setLoading(false);
+          }}
+        >
+          <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+            <View style={styles.modalOverlay}>
+              <View style={styles.modalContent}>
+                <Text style={styles.modalTitle}>Edit Memory Details</Text>
+                {pendingImage && (
+                  <Image source={{ uri: pendingImage }} style={styles.modalImage} />
                 )}
-              </TouchableOpacity>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Location"
+                  value={locationInput}
+                  onChangeText={setLocationInput}
+                  onSubmitEditing={Keyboard.dismiss}
+                  returnKeyType="done"
+                />
+                <TextInput
+                  style={[styles.input, { height: 80 }]}
+                  placeholder="Description"
+                  value={descriptionInput}
+                  onChangeText={setDescriptionInput}
+                  multiline
+                  onSubmitEditing={Keyboard.dismiss}
+                  returnKeyType="done"
+                />
+                <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 12 }}>
+                  <TouchableOpacity
+                    style={[styles.modalButton, { backgroundColor: '#E5E7EB' }]}
+                    onPress={() => {
+                      setModalVisible(false);
+                      setPendingImage(null);
+                      setLoading(false);
+                    }}
+                    disabled={loading}
+                  >
+                    <Text style={{ color: '#1E293B', fontWeight: '600' }}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.modalButton}
+                    onPress={handleSaveMemory}
+                    disabled={loading}
+                  >
+                    {loading ? (
+                      <ActivityIndicator color="white" />
+                    ) : (
+                      <Text style={{ color: 'white', fontWeight: '600' }}>Save</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </View>
             </View>
+          </TouchableWithoutFeedback>
+        </Modal>
+        <View style={styles.header}>
+          <Text style={styles.title}>My Memories</Text>
+          <View style={styles.headerButtons}>
+            <TouchableOpacity
+              style={styles.headerButton}
+              onPress={capturePhoto}
+              disabled={loading}
+            >
+              <Camera size={24} color="#2563EB" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.headerButton}
+              onPress={addMemory}
+              disabled={loading}
+            >
+              <Plus size={24} color="#2563EB" />
+            </TouchableOpacity>
           </View>
         </View>
-      </Modal>
-      <View style={styles.header}>
-        <Text style={styles.title}>My Memories</Text>
-        <View style={styles.headerButtons}>
-          <TouchableOpacity 
-            style={styles.headerButton} 
-            onPress={capturePhoto}
-            disabled={loading}
-          >
-            <Camera size={24} color="#2563EB" />
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={styles.headerButton} 
-            onPress={addMemory}
-            disabled={loading}
-          >
-            <Plus size={24} color="#2563EB" />
-          </TouchableOpacity>
-        </View>
-      </View>
 
-      {memories.length === 0 ? (
-        <View style={styles.emptyState}>
-          <Camera size={64} color="#CBD5E1" />
-          <Text style={styles.emptyTitle}>No memories yet</Text>
-          <Text style={styles.emptyDescription}>
-            Start capturing your precious moments and build your personal timeline
-          </Text>
-          <TouchableOpacity style={styles.addButton} onPress={addMemory}>
-            <Plus size={20} color="white" />
-            <Text style={styles.addButtonText}>Add First Memory</Text>
-          </TouchableOpacity>
-        </View>
-      ) : (
-        <ScrollView showsVerticalScrollIndicator={false} style={styles.timeline}>
-          {memories.map((memory, index) => (
-            <View key={memory.id} style={styles.memoryCard}>
-              <View style={styles.memoryHeader}>
-                <View style={styles.memoryDate}>
-                  <Calendar size={16} color="#64748B" />
-                  <Text style={styles.dateText}>
-                    {format(new Date(memory.date), 'MMM dd, yyyy')}
-                  </Text>
-                </View>
-                <View style={styles.memoryLocation}>
-                  <MapPin size={16} color="#64748B" />
-                  <Text style={styles.locationText}>{memory.location}</Text>
-                </View>
-              </View>
-              
-              <Image source={{ uri: memory.image }} style={styles.memoryImage} />
-              
-              <View style={styles.memoryContent}>
-                <Text style={styles.memoryDescription}>{memory.description}</Text>
-              </View>
-              
-              {index < memories.length - 1 && <View style={styles.timelineDivider} />}
+        {memories.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Camera size={64} color="#CBD5E1" />
+            <Text style={styles.emptyTitle}>No memories yet</Text>
+            <Text style={styles.emptyDescription}>
+              Start capturing your precious moments and build your personal timeline
+            </Text>
+            <TouchableOpacity style={styles.addButton} onPress={addMemory}>
+              <Plus size={20} color="white" />
+              <Text style={styles.addButtonText}>Add First Memory</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <FlatList
+            data={memories}
+            keyExtractor={item => item.id}
+            numColumns={NUM_COLUMNS}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.galleryGrid}
+            renderItem={({ item }) => (
+              <TouchableOpacity onPress={() => setSelectedMemory(item)}>
+                <Image source={{ uri: item.image }} style={styles.galleryGridImage} />
+              </TouchableOpacity>
+            )}
+            style={styles.timeline}
+          />
+        )}
+
+        {/* Memory Detail Modal */}
+        <Modal
+          visible={!!selectedMemory}
+          animationType="fade"
+          transparent
+          onRequestClose={() => setSelectedMemory(null)}
+        >
+          <View style={styles.detailOverlay}>
+            <View style={styles.detailContent}>
+              <TouchableOpacity
+                style={styles.detailClose}
+                onPress={() => setSelectedMemory(null)}
+              >
+                <Text style={{ fontSize: 18, color: '#2563EB', fontWeight: 'bold' }}>Close</Text>
+              </TouchableOpacity>
+              {selectedMemory && (
+                <>
+                  <Image source={{ uri: selectedMemory.image }} style={styles.detailImage} />
+                  <Text style={styles.memoryDescription}>{selectedMemory.description}</Text>
+                </>
+              )}
             </View>
-          ))}
-        </ScrollView>
-      )}
-    </SafeAreaView>
+          </View>
+        </Modal>
+      </SafeAreaView>
+    </TouchableWithoutFeedback>
   );
 }
 
@@ -338,7 +362,7 @@ const styles = StyleSheet.create({
   },
   timeline: {
     flex: 1,
-    paddingHorizontal: 20,
+    paddingHorizontal: HORIZONTAL_PADDING,
   },
   memoryCard: {
     backgroundColor: 'white',
@@ -455,5 +479,41 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: 'center',
     minWidth: 80,
+  },
+  galleryGrid: {
+    paddingTop: 16,
+    paddingBottom: 16,
+  },
+  galleryGridImage: {
+    width: (width - HORIZONTAL_PADDING * 2 - IMAGE_MARGIN * 2 * NUM_COLUMNS) / NUM_COLUMNS,
+    height: (width - HORIZONTAL_PADDING * 2 - IMAGE_MARGIN * 2 * NUM_COLUMNS) / NUM_COLUMNS,
+    borderRadius: 8,
+    margin: IMAGE_MARGIN,
+    backgroundColor: '#E5E7EB',
+  },
+  detailOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(30,41,59,0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  detailContent: {
+    width: '90%',
+    backgroundColor: 'white',
+    borderRadius: 16,
+    padding: 20,
+    alignItems: 'center',
+  },
+  detailImage: {
+    width: 280,
+    height: 280,
+    borderRadius: 16,
+    marginBottom: 20,
+    resizeMode: 'contain',
+    backgroundColor: '#F1F5F9',
+  },
+  detailClose: {
+    alignSelf: 'flex-end',
+    marginBottom: 8,
   },
 });
