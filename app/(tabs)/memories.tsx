@@ -12,10 +12,11 @@ import {
   Keyboard,
   TouchableWithoutFeedback,
   StyleSheet,
+  PanResponder,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState, useEffect, useRef } from 'react';
-import { Camera, Plus, Play, ChevronLeft, Trash2, Volume2, VolumeX } from 'lucide-react-native';
+import { Camera, Plus, Play, ChevronLeft, Trash2, Volume2, VolumeX, ChevronRight } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { format } from 'date-fns';
@@ -47,6 +48,9 @@ export default function MemoriesScreen() {
   const [musicPlaying, setMusicPlaying] = useState(false);
   const presentationTimerRef = useRef<NodeJS.Timeout | number | null>(null);
   const soundRef = useRef<Audio.Sound | null>(null);
+
+  // Add new state for current memory index in fullscreen mode
+  const [currentMemoryIndex, setCurrentMemoryIndex] = useState(0);
 
   useEffect(() => {
     loadMemories();
@@ -101,7 +105,8 @@ export default function MemoriesScreen() {
       return sound;
     } catch (error) {
       console.error('Error loading background music:', error);
-      Alert.alert('Audio Error', 'Failed to load background music');
+      // Don't show alert for audio errors, just log them
+      console.log('Audio playback will be disabled');
       return null;
     }
   };
@@ -254,6 +259,66 @@ export default function MemoriesScreen() {
       setLoading(false);
     }
   };
+
+  // Navigation functions for fullscreen mode
+  const goToPreviousMemory = () => {
+    if (currentMemoryIndex > 0) {
+      const newIndex = currentMemoryIndex - 1;
+      setCurrentMemoryIndex(newIndex);
+      setSelectedMemory(memories[newIndex]);
+    }
+  };
+
+  const goToNextMemory = () => {
+    if (currentMemoryIndex < memories.length - 1) {
+      const newIndex = currentMemoryIndex + 1;
+      setCurrentMemoryIndex(newIndex);
+      setSelectedMemory(memories[newIndex]);
+    }
+  };
+
+  // Update the setSelectedMemory function to also set the index
+  const selectMemory = (memory: Memory) => {
+    const index = memories.findIndex(m => m.id === memory.id);
+    setCurrentMemoryIndex(index);
+    setSelectedMemory(memory);
+  };
+
+  // Pan responder for swipe gestures
+  const panResponder = PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    onMoveShouldSetPanResponder: (evt, gestureState) => {
+      // Only activate for horizontal swipes with lower threshold
+      return Math.abs(gestureState.dx) > 10 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy);
+    },
+    onPanResponderGrant: () => {
+      // User has started a touch
+    },
+    onPanResponderMove: (evt, gestureState) => {
+      // Optional: Add visual feedback during swipe
+    },
+    onPanResponderRelease: (evt, gestureState) => {
+      const { dx, vx } = gestureState;
+      const threshold = 30; // Lower threshold for easier swiping
+      const velocityThreshold = 0.3; // Consider velocity for quick swipes
+      
+      // Check if it's a valid swipe (distance or velocity based)
+      const isValidSwipe = Math.abs(dx) > threshold || Math.abs(vx) > velocityThreshold;
+      
+      if (isValidSwipe) {
+        if (dx > 0 || vx > 0) {
+          // Swipe right - go to previous image
+          goToPreviousMemory();
+        } else {
+          // Swipe left - go to next image  
+          goToNextMemory();
+        }
+      }
+    },
+    onPanResponderTerminate: () => {
+      // Another component has become the responder
+    },
+  });
 
   const startPresentation = async () => {
     if (memories.length === 0) {
@@ -459,7 +524,7 @@ export default function MemoriesScreen() {
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.galleryGrid}
             renderItem={({ item }) => (
-              <TouchableOpacity onPress={() => setSelectedMemory(item)}>
+              <TouchableOpacity onPress={() => selectMemory(item)}>
                 <Image source={{ uri: item.image }} style={styles.galleryGridImage} />
               </TouchableOpacity>
             )}
@@ -467,7 +532,7 @@ export default function MemoriesScreen() {
           />
         )}
 
-        {/* Memory Detail Modal */}
+        {/* Memory Detail Modal with Swipe Functionality */}
         <Modal
           visible={!!selectedMemory}
           animationType="fade"
@@ -480,14 +545,16 @@ export default function MemoriesScreen() {
             }
           }}
         >
-          <View style={styles.fullScreenOverlay}>
+          <View style={styles.fullScreenOverlay} {...panResponder.panHandlers}>
             {!presentationMode && (
-              <TouchableOpacity
-                style={styles.fullScreenClose}
-                onPress={() => setSelectedMemory(null)}
-              >
-                <ChevronLeft size={24} color="#000" />
-              </TouchableOpacity>
+              <>
+                <TouchableOpacity
+                  style={styles.fullScreenClose}
+                  onPress={() => setSelectedMemory(null)}
+                >
+                  <ChevronLeft size={24} color="#000" />
+                </TouchableOpacity>
+              </>
             )}
             
             {!presentationMode && (
