@@ -303,9 +303,23 @@ export default function RemindersScreen() {
     const today = format(new Date(), 'EEE').substring(0, 3);
 
     return reminders
-      .filter((r) => r.isActive && r.days.includes(today))
+      .filter((r) => {
+        if (!r.isActive) return false;
+        if (r.repeatMode === 'weekly') {
+          return r.days.includes(today);
+        }
+        if (r.repeatMode === 'interval') {
+          return true; // Always show interval reminders as "today"
+        }
+        return false;
+      })
       .sort((a, b) => {
-        return timeStringToMinutes(a.time) - timeStringToMinutes(b.time);
+        const getMinutes = (r: Reminder) =>
+          r.repeatMode === 'interval' || !r.time
+            ? 0
+            : timeStringToMinutes(r.time);
+
+        return getMinutes(a) - getMinutes(b);
       });
   }, [reminders]);
 
