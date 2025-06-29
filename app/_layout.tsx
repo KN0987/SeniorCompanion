@@ -10,8 +10,30 @@ import {
   Inter_700Bold
 } from '@expo-google-fonts/inter';
 import * as SplashScreen from 'expo-splash-screen';
+import { AuthProvider, useAuth } from '../contexts/AuthContext';
+import AuthScreen from '../components/AuthScreen';
+import LoadingSpinner from '../components/LoadingSpinner';
 
 SplashScreen.preventAutoHideAsync();
+
+function AppContent() {
+  const { isAuthenticated, isLoading } = useAuth();
+
+  if (isLoading) {
+    return <LoadingSpinner />;
+  }
+
+  if (!isAuthenticated) {
+    return <AuthScreen />;
+  }
+
+  return (
+    <Stack screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="(tabs)" />
+      <Stack.Screen name="+not-found" />
+    </Stack>
+  );
+}
 
 export default function RootLayout() {
   useFrameworkReady();
@@ -34,12 +56,9 @@ export default function RootLayout() {
   }
 
   return (
-    <>
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="+not-found" />
-      </Stack>
+    <AuthProvider>
+      <AppContent />
       <StatusBar style="auto" />
-    </>
+    </AuthProvider>
   );
 }

@@ -4,7 +4,8 @@ import {
   StyleSheet, 
   ScrollView, 
   TouchableOpacity,
-  Dimensions 
+  Dimensions,
+  Alert
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -14,14 +15,28 @@ import {
   Camera, 
   MessageCircle,
   Calendar,
-  TrendingUp
+  TrendingUp,
+  LogOut
 } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
+import { useAuth } from '../../contexts/AuthContext';
 
 const { width } = Dimensions.get('window');
 
 export default function HomeScreen() {
   const router = useRouter();
+  const { logout } = useAuth();
+
+  const handleLogout = () => {
+    Alert.alert(
+      'Sign Out',
+      'Are you sure you want to sign out?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Sign Out', style: 'destructive', onPress: logout }
+      ]
+    );
+  };
 
   const quickActions = [
     {
@@ -73,9 +88,14 @@ export default function HomeScreen() {
             <Text style={styles.greeting}>Good Morning</Text>
             <Text style={styles.name}>Welcome back!</Text>
           </View>
-          <TouchableOpacity style={styles.profileButton}>
-            <Heart size={24} color="#2563EB" />
-          </TouchableOpacity>
+          <View style={styles.headerButtons}>
+            <TouchableOpacity style={styles.profileButton}>
+              <Heart size={24} color="#2563EB" />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.profileButton} onPress={handleLogout}>
+              <LogOut size={20} color="#DC2626" />
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Health Summary Card */}
@@ -184,6 +204,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#E0E7FF',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  headerButtons: {
+    flexDirection: 'row',
+    gap: 8,
   },
   summaryCard: {
     marginHorizontal: 20,
