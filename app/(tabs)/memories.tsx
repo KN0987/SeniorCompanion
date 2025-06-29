@@ -6,7 +6,10 @@ import {
   TouchableOpacity,
   Image,
   Dimensions,
-  Alert
+  Alert,
+  Modal,
+  TextInput,
+  ActivityIndicator
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState, useEffect } from 'react';
@@ -15,12 +18,12 @@ import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { format } from 'date-fns';
 
+
 const { width } = Dimensions.get('window');
 
 interface Memory {
   id: string;
   image: string;
-  title: string;
   date: string;
   location?: string;
   description?: string;
@@ -29,6 +32,10 @@ interface Memory {
 export default function MemoriesScreen() {
   const [memories, setMemories] = useState<Memory[]>([]);
   const [loading, setLoading] = useState(false);
+  const [modalVisible, setModalVisible] = useState(false);
+  const [pendingImage, setPendingImage] = useState<string | null>(null);
+  const [locationInput, setLocationInput] = useState('');
+  const [descriptionInput, setDescriptionInput] = useState('');
 
   useEffect(() => {
     loadMemories();
@@ -56,10 +63,10 @@ export default function MemoriesScreen() {
   const addMemory = async () => {
     try {
       setLoading(true);
-      
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
         Alert.alert('Permission needed', 'Please grant permission to access your photos');
+        setLoading(false);
         return;
       }
 
@@ -71,71 +78,132 @@ export default function MemoriesScreen() {
       });
 
       if (!result.canceled && result.assets[0]) {
-        const newMemory: Memory = {
-          id: Date.now().toString(),
-          image: result.assets[0].uri,
-          title: `Memory from ${format(new Date(), 'MMM dd, yyyy')}`,
-          date: new Date().toISOString(),
-          location: 'Current Location',
-          description: 'A beautiful moment captured'
-        };
-
-        const updatedMemories = [newMemory, ...memories];
-        setMemories(updatedMemories);
-        await saveMemories(updatedMemories);
-        
-        Alert.alert('Success', 'Memory added to your timeline!');
+        setPendingImage(result.assets[0].uri);
+        setLocationInput('');
+        setDescriptionInput('');
+        setModalVisible(true);
+        setLoading(false);
+        console.log('Modal should be visible now');
+      } else {
+        setLoading(false);
       }
     } catch (error) {
       Alert.alert('Error', 'Failed to add memory');
-      console.error('Error adding memory:', error);
-    } finally {
       setLoading(false);
+      console.error('Error adding memory:', error);
     }
+  };
+
+  const handleSaveMemory = async () => {
+    if (!pendingImage) return;
+    const newMemory: Memory = {
+      id: Date.now().toString(),
+      image: pendingImage,
+      date: new Date().toISOString(),
+      location: locationInput || 'Current Location',
+      description: descriptionInput || 'A beautiful moment captured'
+    };
+    const updatedMemories = [newMemory, ...memories];
+    setMemories(updatedMemories);
+    await saveMemories(updatedMemories);
+    setModalVisible(false);
+    setPendingImage(null);
+    setLoading(false);
+    Alert.alert('Success', 'Memory added to your timeline!');
   };
 
   const capturePhoto = async () => {
-    try {
-      setLoading(true);
-      
-      const { status } = await ImagePicker.requestCameraPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permission needed', 'Please grant permission to access your camera');
-        return;
-      }
+  try {
+    setLoading(true);
 
-      const result = await ImagePicker.launchCameraAsync({
-        allowsEditing: true,
-        aspect: [4, 3],
-        quality: 1,
-      });
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission needed', 'Please grant permission to access your camera');
+      setLoading(false);
+      return;
+    }
 
-      if (!result.canceled && result.assets[0]) {
-        const newMemory: Memory = {
-          id: Date.now().toString(),
-          image: result.assets[0].uri,
-          title: `Memory from ${format(new Date(), 'MMM dd, yyyy')}`,
-          date: new Date().toISOString(),
-          location: 'Current Location',
-          description: 'A beautiful moment captured'
-        };
+    const result = await ImagePicker.launchCameraAsync({
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 1,
+    });
 
-        const updatedMemories = [newMemory, ...memories];
-        setMemories(updatedMemories);
-        await saveMemories(updatedMemories);
-        
-        Alert.alert('Success', 'Memory captured and added to your timeline!');
-      }
-    } catch (error) {
-      Alert.alert('Error', 'Failed to capture photo');
-      console.error('Error capturing photo:', error);
-    } finally {
+    if (!result.canceled && result.assets[0]) {
+      setPendingImage(result.assets[0].uri);
+      setLocationInput('');
+      setDescriptionInput('');
+      setModalVisible(true);
+      setLoading(false);
+
+    } else {
       setLoading(false);
     }
-  };
+  } catch (error) {
+    Alert.alert('Error', 'Failed to capture photo');
+    console.error('Error capturing photo:', error);
+    setLoading(false);
+  }
+};
 
   return (
     <SafeAreaView style={styles.container}>
+      <Modal
+        visible={modalVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => {
+          setModalVisible(false);
+          setPendingImage(null);
+          setLoading(false);
+        }}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Edit Memory Details</Text>
+            {pendingImage && (
+              <Image source={{ uri: pendingImage }} style={styles.modalImage} />
+            )}
+            <TextInput
+              style={styles.input}
+              placeholder="Location"
+              value={locationInput}
+              onChangeText={setLocationInput}
+            />
+            <TextInput
+              style={[styles.input, { height: 80 }]}
+              placeholder="Description"
+              value={descriptionInput}
+              onChangeText={setDescriptionInput}
+              multiline
+            />
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 12 }}>
+              <TouchableOpacity
+                style={[styles.modalButton, { backgroundColor: '#E5E7EB' }]}
+                onPress={() => {
+                  setModalVisible(false);
+                  setPendingImage(null);
+                  setLoading(false);
+                }}
+                disabled={loading}
+              >
+                <Text style={{ color: '#1E293B', fontWeight: '600' }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.modalButton}
+                onPress={handleSaveMemory}
+                disabled={loading}
+              >
+                {loading ? (
+                  <ActivityIndicator color="white" />
+                ) : (
+                  <Text style={{ color: 'white', fontWeight: '600' }}>Save</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
       <View style={styles.header}>
         <Text style={styles.title}>My Memories</Text>
         <View style={styles.headerButtons}>
@@ -188,7 +256,6 @@ export default function MemoriesScreen() {
               <Image source={{ uri: memory.image }} style={styles.memoryImage} />
               
               <View style={styles.memoryContent}>
-                <Text style={styles.memoryTitle}>{memory.title}</Text>
                 <Text style={styles.memoryDescription}>{memory.description}</Text>
               </View>
               
@@ -337,5 +404,56 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: '#E2E8F0',
     marginHorizontal: 16,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(30,41,59,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    width: '90%',
+    backgroundColor: 'white',
+    borderRadius: 16,
+    padding: 20,
+    alignItems: 'stretch',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1E293B',
+    marginBottom: 16,
+    textAlign: 'center',
+    fontFamily: 'Inter-Bold',
+  },
+  modalImage: {
+    width: '100%',
+    height: 160,
+    borderRadius: 12,
+    marginBottom: 16,
+    resizeMode: 'cover',
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    marginBottom: 12,
+    fontFamily: 'Inter-Regular',
+    backgroundColor: '#F1F5F9',
+  },
+  modalButton: {
+    backgroundColor: '#2563EB',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    minWidth: 80,
   },
 });
