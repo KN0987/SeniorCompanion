@@ -9,6 +9,8 @@ import {
   TextInput,
   Switch,
   Platform,
+  Image,
+  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState, useEffect, useMemo } from 'react';
@@ -52,6 +54,7 @@ interface Reminder {
   notificationMode?: 'specificDays' | 'interval';
   repeatMode: 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly';
   interval?: Interval;
+  media?: string;
 }
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -77,6 +80,7 @@ export default function RemindersScreen() {
     notificationMode: 'specificDays' as 'specificDays' | 'interval',
     repeatMode: 'none' as 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly',
     interval: {} as Interval,
+    media: '',
   });
 
   const repeatOptions = [
@@ -160,6 +164,7 @@ export default function RemindersScreen() {
       notificationMode: 'specificDays',
       repeatMode: 'none',
       interval: {},
+      media: '',
     });
     setShowModal(true);
   };
@@ -177,6 +182,7 @@ export default function RemindersScreen() {
       notificationMode: reminder.notificationMode || 'specificDays',
       repeatMode: reminder.repeatMode || 'none',
       interval: reminder.interval || {},
+      media: reminder.media || '',
     });
     setShowModal(true);
   };
@@ -599,6 +605,31 @@ export default function RemindersScreen() {
                   <Text style={styles.reminderDescription}>
                     {reminder.description}
                   </Text>
+                )}
+                {reminder.media && (
+                  <View style={{ marginTop: 8 }}>
+                    {reminder.type === 'medication' ? (
+                      <Image
+                        source={{ uri: reminder.media }}
+                        style={{ width: '100%', height: 150, borderRadius: 8 }}
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <Text
+                        style={{
+                          color: '#2563EB',
+                          textDecorationLine: 'underline',
+                        }}
+                        onPress={() => {
+                          if (reminder.media) {
+                            Linking.openURL(reminder.media);
+                          }
+                        }}
+                      >
+                        Watch Exercise Video
+                      </Text>
+                    )}
+                  </View>
                 )}
               </View>
             ))
@@ -1061,6 +1092,26 @@ export default function RemindersScreen() {
                 placeholder="Additional notes..."
                 multiline
                 numberOfLines={3}
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>
+                {formData.type === 'medication'
+                  ? 'Medication Image URL'
+                  : 'Exercise YouTube Link'}
+              </Text>
+              <TextInput
+                style={styles.formInput}
+                value={formData.media}
+                onChangeText={(text) =>
+                  setFormData((prev) => ({ ...prev, media: text }))
+                }
+                placeholder={
+                  formData.type === 'medication'
+                    ? 'e.g., https://example.com/image.jpg'
+                    : 'e.g., https://youtube.com/watch?v=xyz'
+                }
               />
             </View>
           </ScrollView>
