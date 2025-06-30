@@ -62,6 +62,8 @@ export default function RemindersScreen() {
   const [editingReminder, setEditingReminder] = useState<Reminder | null>(null);
   const [showRepeatDropdown, setShowRepeatDropdown] = useState(false);
   const [showUnitDropdown, setShowUnitDropdown] = useState(false);
+  const [selectedIntervalUnit, setSelectedIntervalUnit] =
+    useState<keyof Interval>('minutes');
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [pickerTime, setPickerTime] = useState(new Date());
   const [formData, setFormData] = useState({
@@ -236,6 +238,11 @@ export default function RemindersScreen() {
     setReminders(updatedReminders);
     await saveReminders(updatedReminders);
     setShowModal(false);
+
+    // get all notifications
+    const allNotifications =
+      await Notifications.getAllScheduledNotificationsAsync();
+    console.log('All scheduled notifications:', allNotifications);
   };
 
   async function deleteReminderById(
@@ -954,16 +961,14 @@ export default function RemindersScreen() {
                     keyboardType="numeric"
                     placeholder="e.g., 1"
                     value={
-                      Object.values(formData.interval)[0]?.toString() ?? ''
+                      formData.interval?.[selectedIntervalUnit]?.toString() ??
+                      ''
                     }
                     onChangeText={(text) => {
-                      const selectedUnit = Object.keys(
-                        formData.interval
-                      )[0] as keyof Interval;
                       setFormData((prev) => ({
                         ...prev,
                         interval: {
-                          [selectedUnit]:
+                          [selectedIntervalUnit]:
                             text === '' ? undefined : parseInt(text) || 0,
                         },
                       }));
@@ -975,7 +980,7 @@ export default function RemindersScreen() {
                     onPress={() => setShowUnitDropdown(true)}
                   >
                     <Text style={styles.dropdownButtonText}>
-                      {Object.keys(formData.interval)[0] || 'minutes'}
+                      {selectedIntervalUnit}
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -997,14 +1002,13 @@ export default function RemindersScreen() {
                         key={unit}
                         style={styles.dropdownItem}
                         onPress={() => {
-                          const value =
-                            formData.interval[unit] ??
-                            Object.values(formData.interval)[0] ??
-                            undefined;
+                          const currentValue =
+                            formData.interval?.[selectedIntervalUnit];
+                          setSelectedIntervalUnit(unit);
                           setFormData((prev) => ({
                             ...prev,
                             interval: {
-                              [unit]: value,
+                              [unit]: currentValue,
                             },
                           }));
                           setShowUnitDropdown(false);
