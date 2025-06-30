@@ -126,14 +126,15 @@ export default function MemoriesScreen() {
      if (soundRef.current) {
        await soundRef.current.unloadAsync();
      }
+     const songs = [
+      require('../../assets/songs/Memories.mp3'),
+      require('../../assets/songs/Photograph.mp3'),
+    ];
 
+      const selectedSong = songs[Math.floor(Math.random() * songs.length)];
 
-     // Replace with your music file
-     // For local file: require('./assets/your-music.mp3')
-     // For remote URL: { uri: 'https://example.com/music.mp3' }
      const { sound } = await Audio.Sound.createAsync(
-       // Example: using a gentle piano melody for presentations
-       { uri: 'https://www.soundjay.com/misc/sounds/bell-ringing-05.wav' },
+      selectedSong,
        {
          shouldPlay: false,
          isLooping: true,
