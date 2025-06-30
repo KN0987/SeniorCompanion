@@ -25,6 +25,7 @@ import {
   getLineHeight
 } from '../../hooks/useAccessibilitySettings';
 import AccessibilityControls from '../../components/AccessibilityControls';
+import { trackActivity } from '../../services/activityService';
 
 // Simple animated dots for typing indicator
 function AnimatedDots() {
@@ -143,6 +144,14 @@ function ChatScreen() {
   // Wrapper function to dismiss keyboard after sending message
   const sendMessage = async () => {
     if (inputText.trim()) {
+      // Track chat activity
+      await trackActivity({
+        type: 'chat',
+        title: 'Chat interaction',
+        details: inputText.substring(0, 50) + (inputText.length > 50 ? '...' : ''),
+        color: '#7C3AED',
+      });
+      
       originalSendMessage();
       textInputRef.current?.blur();
       Keyboard.dismiss();

@@ -1,8 +1,11 @@
 import { GoogleGenerativeAI, GenerativeModel, GenerationConfig } from '@google/generative-ai';
-import { GEMINI_API_KEY } from '@env';
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
+if (!GEMINI_API_KEY) {
+  console.error('GEMINI_API_KEY environment variable is not set');
+}
 // Initialize the Gemini API client with the key from environment variables
-const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+const genAI = new GoogleGenerativeAI(GEMINI_API_KEY as string);
 
 // Define the model configuration
 const modelConfig: GenerationConfig = {

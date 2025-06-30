@@ -36,6 +36,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import * as ImagePicker from 'expo-image-picker';
 import ImageViewing from 'react-native-image-viewing';
 import * as ImageManipulator from 'expo-image-manipulator';
+import { trackActivity } from '../../services/activityService';
 
 interface Interval {
   minutes?: number;
@@ -338,11 +339,22 @@ export default function RemindersScreen() {
   };
 
   const markCompleted = async (id: string) => {
+    const reminder = reminders.find(r => r.id === id);
     const updatedReminders = reminders.map((r) =>
-      r.id === id ? { ...r, completed: !r.completed } : r
+      r.id === id ? { ...r, completed: !r.completed, completedAt: new Date().toISOString() } : r
     );
     setReminders(updatedReminders);
     await saveReminders(updatedReminders);
+    
+    // Track the activity when marking as completed
+    if (reminder && !reminder.completed) {
+      await trackActivity({
+        type: reminder.type === 'medication' ? 'medication' : 'exercise',
+        title: reminder.type === 'medication' ? 'Medication taken' : 'Exercise completed',
+        details: reminder.title,
+        color: reminder.type === 'medication' ? '#059669' : '#DC2626',
+      });
+    }
   };
 
   const toggleDay = (day: string) => {
