@@ -32,7 +32,7 @@ interface Reminder {
   id: string;
   title: string;
   type: 'medication' | 'exercise';
-  time: string;
+  time?: string;
   days: string[];
   isActive: boolean;
   description?: string;
@@ -56,7 +56,7 @@ export default function RemindersScreen() {
   const [formData, setFormData] = useState({
     title: '',
     type: 'medication' as 'medication' | 'exercise',
-    time: '09:00',
+    time: undefined as string | undefined,
     days: [] as string[],
     description: '',
     dosage: '',
@@ -142,7 +142,7 @@ export default function RemindersScreen() {
     setFormData({
       title: '',
       type: 'medication',
-      time: '09:00',
+      time: undefined,
       days: [],
       description: '',
       dosage: '',
@@ -195,7 +195,7 @@ export default function RemindersScreen() {
       id: editingReminder ? editingReminder.id : Date.now().toString(),
       title: formData.title.trim(),
       type: formData.type,
-      time: formData.time,
+      time: formData.time || format(pickerTime, 'HH:mm'),
       days: formData.days,
       isActive: true,
       description: formData.description,
