@@ -28,11 +28,20 @@ import { format } from 'date-fns';
 import * as Notifications from 'expo-notifications';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
+interface Interval {
+  minutes?: number;
+  hours?: number;
+  days?: number;
+  weeks?: number;
+  months?: number;
+  years?: number;
+}
+
 interface Reminder {
   id: string;
   title: string;
   type: 'medication' | 'exercise';
-  time?: string;
+  time: string;
   days: string[];
   isActive: boolean;
   description?: string;
@@ -42,8 +51,7 @@ interface Reminder {
   notificationIds?: string[];
   notificationMode?: 'specificDays' | 'interval';
   repeatMode: 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly';
-  intervalMinutes?: number; // For notificationMode === 'interval'
-  repeat?: boolean; // Whether to repeat on scheduled days
+  interval?: Interval;
 }
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -53,21 +61,21 @@ export default function RemindersScreen() {
   const [showModal, setShowModal] = useState(false);
   const [editingReminder, setEditingReminder] = useState<Reminder | null>(null);
   const [showRepeatDropdown, setShowRepeatDropdown] = useState(false);
+  const [showUnitDropdown, setShowUnitDropdown] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
+  const [pickerTime, setPickerTime] = useState(new Date());
   const [formData, setFormData] = useState({
     title: '',
     type: 'medication' as 'medication' | 'exercise',
-    time: undefined as string | undefined,
+    time: format(pickerTime, 'HH:mm'),
     days: [] as string[],
     description: '',
     dosage: '',
     duration: '',
     notificationMode: 'specificDays' as 'specificDays' | 'interval',
     repeatMode: 'none' as 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly',
-    intervalMinutes: undefined as number | undefined,
+    interval: {} as Interval,
   });
-
-  const [showTimePicker, setShowTimePicker] = useState(false);
-  const [pickerTime, setPickerTime] = useState(new Date());
 
   const repeatOptions = [
     { label: 'None', value: 'none' },
@@ -101,7 +109,7 @@ export default function RemindersScreen() {
             completed: false,
             repeatMode: 'none',
             notificationMode: 'specificDays',
-            intervalMinutes: undefined,
+            interval: undefined,
           },
           {
             id: '2',
@@ -115,7 +123,7 @@ export default function RemindersScreen() {
             completed: false,
             repeatMode: 'none',
             notificationMode: 'specificDays',
-            intervalMinutes: undefined,
+            interval: undefined,
           },
         ];
         setReminders(sampleReminders);
@@ -142,14 +150,14 @@ export default function RemindersScreen() {
     setFormData({
       title: '',
       type: 'medication',
-      time: undefined,
+      time: format(pickerTime, 'HH:mm'),
       days: [],
       description: '',
       dosage: '',
       duration: '',
       notificationMode: 'specificDays',
       repeatMode: 'none',
-      intervalMinutes: undefined,
+      interval: {},
     });
     setShowModal(true);
   };
@@ -166,7 +174,7 @@ export default function RemindersScreen() {
       duration: reminder.duration || '',
       notificationMode: reminder.notificationMode || 'specificDays',
       repeatMode: reminder.repeatMode || 'none',
-      intervalMinutes: reminder.intervalMinutes ?? 240,
+      interval: reminder.interval || {},
     });
     setShowModal(true);
   };
@@ -177,7 +185,7 @@ export default function RemindersScreen() {
       (formData.notificationMode === 'specificDays' &&
         formData.days.length === 0) ||
       (formData.notificationMode === 'interval' &&
-        !Number(formData.intervalMinutes))
+        !Object.values(formData.interval || {}).some((v) => Number(v)))
     ) {
       if (Platform.OS === 'web') {
         window.alert('Please fill in all required fields');
@@ -195,7 +203,10 @@ export default function RemindersScreen() {
       id: editingReminder ? editingReminder.id : Date.now().toString(),
       title: formData.title.trim(),
       type: formData.type,
-      time: formData.time || format(pickerTime, 'HH:mm'),
+      time:
+        typeof formData.time === 'string'
+          ? formData.time
+          : format(formData.time || pickerTime, 'HH:mm'),
       days: formData.days,
       isActive: true,
       description: formData.description,
@@ -203,9 +214,9 @@ export default function RemindersScreen() {
       duration: formData.type === 'exercise' ? formData.duration : undefined,
       completed: false,
       notificationMode: formData.notificationMode,
-      intervalMinutes:
+      interval:
         formData.notificationMode === 'interval'
-          ? formData.intervalMinutes
+          ? formData.interval
           : undefined,
       repeatMode: formData.repeatMode,
     };
@@ -346,13 +357,42 @@ export default function RemindersScreen() {
     return hour * 60 + minute;
   }
 
+  function convertIntervalToSeconds(interval: Interval): number {
+    const unitSeconds: { [key: string]: number } = {
+      minutes: 60,
+      hours: 3600,
+      days: 86400,
+      weeks: 604800,
+      months: 2629800, // avg 30.44 days
+      years: 31557600, // avg 365.25 days
+    };
+
+    for (const unit of Object.keys(unitSeconds)) {
+      if (interval[unit as keyof Interval]) {
+        return (interval[unit as keyof Interval] || 0) * unitSeconds[unit];
+      }
+    }
+
+    return 0;
+  }
+
   async function scheduleReminderNotification(
     reminder: Reminder
   ): Promise<string[]> {
     const notificationIds: string[] = [];
-    const [hour, minute] = reminder.time.split(':').map(Number);
 
-    if (reminder.notificationMode === 'interval' && reminder.intervalMinutes) {
+    if (reminder.notificationMode === 'interval') {
+      const intervalInSeconds = convertIntervalToSeconds(
+        reminder.interval || {}
+      );
+      if (intervalInSeconds <= 0) {
+        if (Platform.OS === 'web') {
+          window.alert('Please enter a valid interval time');
+        } else {
+          Alert.alert('Error', 'Please enter a valid interval time');
+        }
+        return notificationIds;
+      }
       const intervalId = await Notifications.scheduleNotificationAsync({
         content: {
           title: reminder.title,
@@ -360,13 +400,14 @@ export default function RemindersScreen() {
           data: { reminderId: reminder.id },
         },
         trigger: {
-          seconds: reminder.intervalMinutes * 60,
+          seconds: intervalInSeconds,
           repeats: true,
           type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
         },
       });
       notificationIds.push(intervalId);
     } else {
+      const [hour, minute] = reminder.time.split(':').map(Number);
       for (const day of reminder.days) {
         const expoWeekday = getExpoWeekday(day);
         let trigger;
@@ -506,8 +547,20 @@ export default function RemindersScreen() {
                       <Clock size={14} color="#64748B" />
                       <Text style={styles.reminderTime}>
                         {reminder.notificationMode === 'interval' &&
-                        reminder.intervalMinutes
-                          ? `Every ${reminder.intervalMinutes} min`
+                        reminder.interval
+                          ? (() => {
+                              const unitEntry = Object.entries(
+                                reminder.interval
+                              ).find(
+                                ([_, value]) =>
+                                  value !== undefined && value !== 0
+                              );
+                              if (unitEntry) {
+                                const [unit, value] = unitEntry;
+                                return `Every ${value} ${unit}`;
+                              }
+                              return '';
+                            })()
                           : reminder.time}
                       </Text>
                       {reminder.dosage && (
@@ -588,8 +641,20 @@ export default function RemindersScreen() {
                       <Clock size={14} color="#64748B" />
                       <Text style={styles.reminderTime}>
                         {reminder.notificationMode === 'interval' &&
-                        reminder.intervalMinutes
-                          ? `Every ${reminder.intervalMinutes} min`
+                        reminder.interval
+                          ? (() => {
+                              const unitEntry = Object.entries(
+                                reminder.interval
+                              ).find(
+                                ([_, value]) =>
+                                  value !== undefined && value !== 0
+                              );
+                              if (unitEntry) {
+                                const [unit, value] = unitEntry;
+                                return `Every ${value} ${unit}`;
+                              }
+                              return '';
+                            })()
                           : reminder.time}
                       </Text>
                       {reminder.notificationMode === 'specificDays' && (
@@ -877,19 +942,79 @@ export default function RemindersScreen() {
 
             {formData.notificationMode === 'interval' && (
               <View style={styles.formGroup}>
-                <Text style={styles.formLabel}>Repeat every (minutes)</Text>
-                <TextInput
-                  style={styles.formInput}
-                  value={formData.intervalMinutes?.toString()}
-                  onChangeText={(text) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      intervalMinutes: parseInt(text) || 0,
-                    }))
-                  }
-                  keyboardType="numeric"
-                  placeholder="e.g., 240 for every 4 hours"
-                />
+                <Text style={styles.formLabel}>Repeat Interval</Text>
+
+                {/* Dropdown for selecting unit */}
+                <View
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
+                >
+                  <Text style={styles.formLabel}>Every</Text>
+                  <TextInput
+                    style={[styles.formInput, { flex: 1 }]}
+                    keyboardType="numeric"
+                    placeholder="e.g., 1"
+                    value={
+                      Object.values(formData.interval)[0]?.toString() ?? ''
+                    }
+                    onChangeText={(text) => {
+                      const selectedUnit = Object.keys(
+                        formData.interval
+                      )[0] as keyof Interval;
+                      setFormData((prev) => ({
+                        ...prev,
+                        interval: {
+                          [selectedUnit]:
+                            text === '' ? undefined : parseInt(text) || 0,
+                        },
+                      }));
+                    }}
+                  />
+
+                  <TouchableOpacity
+                    style={styles.dropdownButton}
+                    onPress={() => setShowUnitDropdown(true)}
+                  >
+                    <Text style={styles.dropdownButtonText}>
+                      {Object.keys(formData.interval)[0] || 'minutes'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Dropdown list of units */}
+                {showUnitDropdown && (
+                  <View style={styles.dropdownList}>
+                    {(
+                      [
+                        'minutes',
+                        'hours',
+                        'days',
+                        'weeks',
+                        'months',
+                        'years',
+                      ] as (keyof Interval)[]
+                    ).map((unit) => (
+                      <TouchableOpacity
+                        key={unit}
+                        style={styles.dropdownItem}
+                        onPress={() => {
+                          const value =
+                            formData.interval[unit] ??
+                            Object.values(formData.interval)[0] ??
+                            undefined;
+                          setFormData((prev) => ({
+                            ...prev,
+                            interval: {
+                              [unit]: value,
+                            },
+                          }));
+                          setShowUnitDropdown(false);
+                        }}
+                      >
+                        <Text style={styles.dropdownItemText}>{unit}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
               </View>
             )}
 
