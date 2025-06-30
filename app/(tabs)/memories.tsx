@@ -32,28 +32,27 @@ const HORIZONTAL_PADDING = 20;
 
 
 interface Memory {
- id: string;
- image: string;
- date: string;
- location?: string;
- description?: string;
+  id: string;
+  image: string;
+  date: string;
+  category?: string;
+  description?: string;
 }
 
-
 export default function MemoriesScreen() {
- const [memories, setMemories] = useState<Memory[]>([]);
- const [loading, setLoading] = useState(false);
- const [modalVisible, setModalVisible] = useState(false);
- const [pendingImage, setPendingImage] = useState<string | null>(null);
- const [locationInput, setLocationInput] = useState('');
- const [descriptionInput, setDescriptionInput] = useState('');
- const [selectedMemory, setSelectedMemory] = useState<Memory | null>(null);
- const [presentationMode, setPresentationMode] = useState(false);
- const [currentPresentationIndex, setCurrentPresentationIndex] = useState(0);
- const [musicPlaying, setMusicPlaying] = useState(false);
- const [keyboardVisible, setKeyboardVisible] = useState(false);
- const presentationTimerRef = useRef<NodeJS.Timeout | number | null>(null);
- const soundRef = useRef<Audio.Sound | null>(null);
+  const [memories, setMemories] = useState<Memory[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [modalVisible, setModalVisible] = useState(false);
+  const [pendingImage, setPendingImage] = useState<string | null>(null);
+  const [categoryInput, setCategoryInput] = useState('');
+  const [descriptionInput, setDescriptionInput] = useState('');
+  const [selectedMemory, setSelectedMemory] = useState<Memory | null>(null);
+  const [presentationMode, setPresentationMode] = useState(false);
+  const [currentPresentationIndex, setCurrentPresentationIndex] = useState(0);
+  const [musicPlaying, setMusicPlaying] = useState(false);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const presentationTimerRef = useRef<NodeJS.Timeout | number | null>(null);
+  const soundRef = useRef<Audio.Sound | null>(null);
 
 
  // Add new state for current memory index in fullscreen mode
@@ -222,6 +221,26 @@ export default function MemoriesScreen() {
  };
 
 
+ const categoryOptions = ['Friends', 'Family', 'Holidays', 'Vacation', 'Others'];
+
+ const showCategoryPicker = () => {
+   Alert.alert(
+     'Select Category',
+     'Choose a category for this memory',
+     [
+       ...categoryOptions.map(option => ({
+         text: option,
+         onPress: () => setCategoryInput(option)
+       })),
+       {
+         text: 'Cancel',
+         style: 'cancel'
+       }
+     ]
+   );
+ };
+
+
  const addMemory = async () => {
    try {
      setLoading(true);
@@ -232,7 +251,6 @@ export default function MemoriesScreen() {
        return;
      }
 
-
      const result = await ImagePicker.launchImageLibraryAsync({
        mediaTypes: ImagePicker.MediaTypeOptions.Images,
        allowsEditing: true,
@@ -240,10 +258,9 @@ export default function MemoriesScreen() {
        quality: 1,
      });
 
-
      if (!result.canceled && result.assets[0]) {
        setPendingImage(result.assets[0].uri);
-       setLocationInput('');
+       setCategoryInput('');
        setDescriptionInput('');
        setModalVisible(true);
        setLoading(false);
@@ -265,7 +282,7 @@ export default function MemoriesScreen() {
      id: Date.now().toString(),
      image: pendingImage,
      date: new Date().toISOString(),
-     location: locationInput || 'Current Location',
+     category: categoryInput || 'Others',
      description: descriptionInput || 'A beautiful moment captured'
    };
    const updatedMemories = [newMemory, ...memories];
@@ -282,7 +299,6 @@ export default function MemoriesScreen() {
    try {
      setLoading(true);
 
-
      const { status } = await ImagePicker.requestCameraPermissionsAsync();
      if (status !== 'granted') {
        Alert.alert('Permission needed', 'Please grant permission to access your camera');
@@ -290,17 +306,15 @@ export default function MemoriesScreen() {
        return;
      }
 
-
      const result = await ImagePicker.launchCameraAsync({
        allowsEditing: true,
        aspect: [4, 3],
        quality: 1,
      });
 
-
      if (!result.canceled && result.assets[0]) {
        setPendingImage(result.assets[0].uri);
-       setLocationInput('');
+       setCategoryInput('');
        setDescriptionInput('');
        setModalVisible(true);
        setLoading(false);
@@ -501,16 +515,17 @@ export default function MemoriesScreen() {
                {pendingImage && (
                  <Image source={{ uri: pendingImage }} style={styles.modalImage} />
                )}
-               <Text style={styles.inputLabel}>Location</Text>
-               <TextInput
-                 style={styles.input}
-                 placeholder="Enter location (e.g., Central Park, New York)"
-                 value={locationInput}
-                 onChangeText={setLocationInput}
-                 onSubmitEditing={Keyboard.dismiss}
-                 returnKeyType="done"
-               />
-               <Text style={styles.inputLabel}>What's best about this memory?</Text>
+               <Text style={styles.inputLabel}>Category</Text>
+               <TouchableOpacity
+                 style={styles.dropdownButton}
+                 onPress={showCategoryPicker}
+               >
+                 <Text style={[styles.dropdownText, !categoryInput && styles.placeholderText]}>
+                   {categoryInput || 'Select a category'}
+                 </Text>
+                 <ChevronRight size={20} color="#64748B" />
+               </TouchableOpacity>
+               <Text style={styles.inputLabel}>Best Moment About It</Text>
                <TextInput
                  style={[styles.input, { height: 60 }]}
                  placeholder="Describe this memory..."
@@ -873,6 +888,25 @@ const styles = StyleSheet.create({
    color: '#1E293B',
    marginBottom: 8,
    fontFamily: 'Inter-SemiBold',
+ },
+ dropdownButton: {
+   borderWidth: 1,
+   borderColor: '#E5E7EB',
+   borderRadius: 8,
+   padding: 12,
+   marginBottom: 16,
+   backgroundColor: '#F1F5F9',
+   flexDirection: 'row',
+   justifyContent: 'space-between',
+   alignItems: 'center',
+ },
+ dropdownText: {
+   fontSize: 16,
+   color: '#1E293B',
+   fontFamily: 'Inter-Regular',
+ },
+ placeholderText: {
+   color: '#9CA3AF',
  },
  modalButton: {
    backgroundColor: '#2563EB',
