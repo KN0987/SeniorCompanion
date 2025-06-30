@@ -1,3 +1,4 @@
+import React from 'react';
 import {
   View,
   Text,
@@ -24,6 +25,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { format } from 'date-fns';
 import { Audio } from 'expo-av';
 import styles from '../styles/memories.style';
+import { trackActivity } from '../../services/activityService';
 
 
 const { width } = Dimensions.get('window');
@@ -311,6 +313,15 @@ export default function MemoriesScreen() {
     const updatedMemories = [newMemory, ...memories];
     setMemories(updatedMemories);
     await saveMemories(updatedMemories);
+    
+    // Track the activity
+    await trackActivity({
+      type: 'memory',
+      title: 'Memory added',
+      details: newMemory.description,
+      color: '#2563EB',
+    });
+    
     setModalVisible(false);
     setPendingImage(null);
     setLoading(false);

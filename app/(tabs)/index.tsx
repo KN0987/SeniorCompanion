@@ -7,7 +7,8 @@ import {
   Dimensions,
   Alert,
   Switch,
-  Modal
+  Modal,
+  RefreshControl
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -23,10 +24,18 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { 
+  calculateHealthMetrics, 
+  getRecentActivities, 
+  formatActivityTime,
+  syncActivitiesFromAppData,
+  HealthMetrics,
+  ActivityItem
+} from '../../services/activityService';
+import { useFocusRefresh } from '../../hooks/useFocusRefresh';
 
 const { width } = Dimensions.get('window');
-
 
 // Add type annotations for props
 interface HomeScreenProps {}
@@ -35,6 +44,57 @@ export default function HomeScreen() {
   const router = useRouter();
   const { logout, protectionEnabled, setProtectionEnabled } = useAuth();
   const [settingsVisible, setSettingsVisible] = useState(false);
+  const [healthMetrics, setHealthMetrics] = useState<HealthMetrics>({
+    moodScore: '7.5',
+    medicationAdherence: '70%',
+    exerciseFrequency: '0/7',
+    moodTrend: '+0.0',
+    medicationTrend: '+0%',
+    exerciseTrend: '+0',
+  });
+  const [recentActivities, setRecentActivities] = useState<ActivityItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  useEffect(() => {
+    loadDashboardData();
+  }, []);
+
+  // Refresh data when screen comes into focus
+  useFocusRefresh(() => {
+    loadDashboardData(true);
+  });
+
+  const loadDashboardData = async (isRefresh = false) => {
+    try {
+      if (isRefresh) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
+      
+      // Sync activities from existing app data first
+      await syncActivitiesFromAppData();
+      
+      // Load health metrics and recent activities
+      const [metrics, activities] = await Promise.all([
+        calculateHealthMetrics(),
+        getRecentActivities(5)
+      ]);
+      
+      setHealthMetrics(metrics);
+      setRecentActivities(activities);
+    } catch (error) {
+      console.error('Error loading dashboard data:', error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  const onRefresh = () => {
+    loadDashboardData(true);
+  };
 
   const handleLogout = () => {
     Alert.alert(
@@ -82,15 +142,25 @@ export default function HomeScreen() {
     }
   ];
 
-  const healthMetrics = [
-    { label: 'Mood Score', value: '8.2', trend: '+0.5', color: '#059669' },
-    { label: 'Medication', value: '95%', trend: '+2%', color: '#2563EB' },
-    { label: 'Exercise', value: '4/7', trend: '+1', color: '#DC2626' },
+  const metricsData = [
+    { label: 'Mood Score', value: healthMetrics.moodScore, trend: healthMetrics.moodTrend, color: '#059669' },
+    { label: 'Medication', value: healthMetrics.medicationAdherence, trend: healthMetrics.medicationTrend, color: '#2563EB' },
+    { label: 'Exercise', value: healthMetrics.exerciseFrequency, trend: healthMetrics.exerciseTrend, color: '#DC2626' },
   ];
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={['#2563EB']}
+            tintColor="#2563EB"
+          />
+        }
+      >
         {/* Header */}
         <View style={styles.header}>
           <View>
@@ -116,7 +186,7 @@ export default function HomeScreen() {
             <Activity size={24} color="white" />
           </View>
           <View style={styles.metricsRow}>
-            {healthMetrics.map((metric, index) => (
+            {metricsData.map((metric, index) => (
               <View key={index} style={styles.metricItem}>
                 <Text style={styles.metricValue}>{metric.value}</Text>
                 <Text style={styles.metricLabel}>{metric.label}</Text>
@@ -150,27 +220,24 @@ export default function HomeScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Recent Activity</Text>
           <View style={styles.activityCard}>
-            <View style={styles.activityItem}>
-              <View style={[styles.activityDot, { backgroundColor: '#059669' }]} />
-              <View style={styles.activityContent}>
-                <Text style={styles.activityTitle}>Medication taken</Text>
-                <Text style={styles.activityTime}>2 hours ago</Text>
-              </View>
-            </View>
-            <View style={styles.activityItem}>
-              <View style={[styles.activityDot, { backgroundColor: '#2563EB' }]} />
-              <View style={styles.activityContent}>
-                <Text style={styles.activityTitle}>Memory added</Text>
-                <Text style={styles.activityTime}>5 hours ago</Text>
-              </View>
-            </View>
-            <View style={styles.activityItem}>
-              <View style={[styles.activityDot, { backgroundColor: '#DC2626' }]} />
-              <View style={styles.activityContent}>
-                <Text style={styles.activityTitle}>Exercise completed</Text>
-                <Text style={styles.activityTime}>1 day ago</Text>
-              </View>
-            </View>
+            {loading ? (
+              <Text style={styles.loadingText}>Loading activities...</Text>
+            ) : recentActivities.length > 0 ? (
+              recentActivities.map((activity) => (
+                <View key={activity.id} style={styles.activityItem}>
+                  <View style={[styles.activityDot, { backgroundColor: activity.color }]} />
+                  <View style={styles.activityContent}>
+                    <Text style={styles.activityTitle}>{activity.title}</Text>
+                    <Text style={styles.activityTime}>{formatActivityTime(activity.timestamp)}</Text>
+                    {activity.details && (
+                      <Text style={styles.activityDetails}>{activity.details}</Text>
+                    )}
+                  </View>
+                </View>
+              ))
+            ) : (
+              <Text style={styles.emptyText}>No recent activity. Start using the app to see your progress!</Text>
+            )}
           </View>
         </View>
       </ScrollView>
@@ -378,6 +445,26 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-Medium',
   },
   activityTime: {
+    fontSize: 12,
+    color: '#64748B',
+    fontFamily: 'Inter-Regular',
+    marginTop: 2,
+  },
+  loadingText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#64748B',
+    fontFamily: 'Inter-Medium',
+    textAlign: 'center',
+  },
+  emptyText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#64748B',
+    fontFamily: 'Inter-Medium',
+    textAlign: 'center',
+  },
+  activityDetails: {
     fontSize: 12,
     color: '#64748B',
     fontFamily: 'Inter-Regular',
