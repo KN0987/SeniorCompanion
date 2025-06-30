@@ -4,7 +4,10 @@ import {
   StyleSheet, 
   ScrollView, 
   TouchableOpacity,
-  Dimensions 
+  Dimensions,
+  Alert,
+  Switch,
+  Modal
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -14,14 +17,35 @@ import {
   Camera, 
   MessageCircle,
   Calendar,
-  TrendingUp
+  TrendingUp,
+  LogOut
 } from 'lucide-react-native';
-import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useAuth } from '../../contexts/AuthContext';
+import React, { useState } from 'react';
 
 const { width } = Dimensions.get('window');
 
+
+// Add type annotations for props
+interface HomeScreenProps {}
+
 export default function HomeScreen() {
   const router = useRouter();
+  const { logout, protectionEnabled, setProtectionEnabled } = useAuth();
+  const [settingsVisible, setSettingsVisible] = useState(false);
+
+  const handleLogout = () => {
+    Alert.alert(
+      'Sign Out',
+      'Are you sure you want to sign out?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Sign Out', style: 'destructive', onPress: logout }
+      ]
+    );
+  };
 
   const quickActions = [
     {
@@ -73,9 +97,11 @@ export default function HomeScreen() {
             <Text style={styles.greeting}>Good Morning</Text>
             <Text style={styles.name}>Welcome back!</Text>
           </View>
-          <TouchableOpacity style={styles.profileButton}>
-            <Heart size={24} color="#2563EB" />
-          </TouchableOpacity>
+          <View style={styles.headerButtons}>
+            <TouchableOpacity style={styles.profileButton} onPress={() => setSettingsVisible(true)}>
+              <Ionicons name="settings-outline" size={24} color="#2563EB" />
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Health Summary Card */}
@@ -148,6 +174,41 @@ export default function HomeScreen() {
           </View>
         </View>
       </ScrollView>
+      <Modal
+        visible={settingsVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setSettingsVisible(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'center', alignItems: 'center' }}>
+          <View style={{ backgroundColor: 'white', borderRadius: 16, padding: 24, width: 300 }}>
+            <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 16 }}>Settings</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+              <Text style={{ fontSize: 16 }}>Require Authentication</Text>
+              <Switch
+                value={protectionEnabled}
+                onValueChange={setProtectionEnabled}
+                trackColor={{ false: '#ccc', true: '#2563EB' }}
+                thumbColor={protectionEnabled ? '#2563EB' : '#f4f3f4'}
+              />
+            </View>
+            {protectionEnabled && (
+              <TouchableOpacity
+                onPress={logout}
+                style={{ backgroundColor: '#2563EB', borderRadius: 8, paddingVertical: 12, alignItems: 'center', marginBottom: 8 }}
+              >
+                <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 16 }}>Log Out</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              onPress={() => setSettingsVisible(false)}
+              style={{ alignSelf: 'flex-end', marginTop: 8 }}
+            >
+              <Text style={{ color: '#2563EB', fontWeight: 'bold', fontSize: 16 }}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -184,6 +245,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#E0E7FF',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  headerButtons: {
+    flexDirection: 'row',
+    gap: 8,
   },
   summaryCard: {
     marginHorizontal: 20,

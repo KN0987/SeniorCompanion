@@ -29,7 +29,8 @@
           "sounds": ["./local/assets/notification-sound.wav"],
           "iosDisplayInForeground": true
         }
-      ]
+      ],
+      "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": true
