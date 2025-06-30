@@ -258,11 +258,6 @@ export default function RemindersScreen() {
     setReminders(updatedReminders);
     await saveReminders(updatedReminders);
     setShowModal(false);
-
-    // get all notifications
-    const allNotifications =
-      await Notifications.getAllScheduledNotificationsAsync();
-    console.log('All scheduled notifications:', allNotifications);
   };
 
   async function deleteReminderById(
@@ -1211,7 +1206,7 @@ export default function RemindersScreen() {
                           pickImage(true, (uris) =>
                             setFormData((prev) => ({
                               ...prev,
-                              media: [...(prev.mediaImage || []), ...uris],
+                              mediaImage: [...(prev.mediaImage || []), ...uris],
                             }))
                           )
                         }
@@ -1225,7 +1220,7 @@ export default function RemindersScreen() {
                           pickImage(false, (uris) =>
                             setFormData((prev) => ({
                               ...prev,
-                              media: [...(prev.mediaImage || []), ...uris],
+                              mediaImage: [...(prev.mediaImage || []), ...uris],
                             }))
                           )
                         }
