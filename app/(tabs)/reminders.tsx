@@ -14,6 +14,7 @@ import {
   KeyboardAvoidingView,
   TouchableWithoutFeedback,
   Keyboard,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState, useEffect, useMemo } from 'react';
@@ -34,6 +35,7 @@ import * as Notifications from 'expo-notifications';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as ImagePicker from 'expo-image-picker';
 import ImageViewing from 'react-native-image-viewing';
+import * as ImageManipulator from 'expo-image-manipulator';
 
 interface Interval {
   minutes?: number;
@@ -78,6 +80,8 @@ export default function RemindersScreen() {
   const [visible, setVisible] = useState(false);
   const [imageIndex, setImageIndex] = useState(0);
   const [selectedImages, setSelectedImages] = useState<string[]>([]);
+  const [imagesAddedFeedback, setImagesAddedFeedback] = useState(false);
+  const [loadingImages, setLoadingImages] = useState(false);
   const [formData, setFormData] = useState({
     title: '',
     type: 'medication' as 'medication' | 'exercise',
@@ -522,30 +526,52 @@ export default function RemindersScreen() {
     }
   }
 
-  const pickImage = async (
-    fromCamera: boolean,
-    onImagesSelected: (uris: string[]) => void
-  ) => {
-    let result;
-    if (fromCamera) {
-      result = await ImagePicker.launchCameraAsync({
-        allowsMultipleSelection: false,
-        quality: 0.8,
-      });
-    } else {
-      result = await ImagePicker.launchImageLibraryAsync({
-        allowsMultipleSelection: true,
-        quality: 0.8,
-        selectionLimit: 5,
-      });
-    }
+  const pickImage = async (callback) => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsMultipleSelection: true,
+      quality: 0.5,
+      base64: false,
+    });
 
     if (!result.canceled) {
-      const uris = fromCamera
-        ? [result.assets[0].uri]
-        : result.assets.map((asset) => asset.uri);
-      onImagesSelected(uris);
+      setLoadingImages(true);
+      try {
+        const compressedUris = [];
+
+        for (const asset of result.assets) {
+          const compressed = await ImageManipulator.manipulateAsync(
+            asset.uri,
+            [{ resize: { width: 800 } }],
+            { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
+          );
+          compressedUris.push(compressed.uri);
+        }
+
+        if (callback) {
+          callback(compressedUris);
+        } else {
+          setFormData((prev) => ({
+            ...prev,
+            mediaImage: [...(prev.mediaImage || []), ...compressedUris],
+          }));
+        }
+      } catch (err) {
+        console.error('Image compression failed:', err);
+      } finally {
+        setLoadingImages(false);
+      }
     }
+  };
+
+  const handleImagesAdded = (uris) => {
+    setFormData((prev) => ({
+      ...prev,
+      mediaImage: [...(prev.mediaImage || []), ...uris],
+    }));
+    setImagesAddedFeedback(true);
+
+    setTimeout(() => setImagesAddedFeedback(false), 2000);
   };
 
   return (
@@ -761,28 +787,87 @@ export default function RemindersScreen() {
                           )}
                         </View>
                       </View>
-                      <View style={styles.reminderActions}>
-                        <Switch
-                          value={reminder.isActive}
-                          onValueChange={() => toggleReminder(reminder.id)}
-                          trackColor={{ false: '#E2E8F0', true: '#DBEAFE' }}
-                          thumbColor={reminder.isActive ? '#2563EB' : '#94A3B8'}
-                        />
+                      <View style={styles.reminderActionsRow}>
+                        <TouchableOpacity
+                          style={styles.toggleButton}
+                          onPress={() => editReminder(reminder)}
+                        >
+                          <Edit2 size={16} color="#64748B" />
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          style={styles.toggleButton}
+                          onPress={() => deleteReminder(reminder.id)}
+                        >
+                          <Trash2 size={16} color="#DC2626" />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.toggleButton}
+                          onPress={() => toggleReminder(reminder.id)}
+                        >
+                          <Switch
+                            value={reminder.isActive}
+                            onValueChange={() => toggleReminder(reminder.id)}
+                            trackColor={{ false: '#E2E8F0', true: '#DBEAFE' }}
+                            thumbColor={
+                              reminder.isActive ? '#2563EB' : '#94A3B8'
+                            }
+                            style={{
+                              transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }],
+                            }}
+                          />
+                        </TouchableOpacity>
                       </View>
                     </View>
-                    <View style={styles.actionButtons}>
-                      <TouchableOpacity
-                        style={styles.actionButton}
-                        onPress={() => editReminder(reminder)}
-                      >
-                        <Edit2 size={16} color="#64748B" />
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={styles.actionButton}
-                        onPress={() => deleteReminder(reminder.id)}
-                      >
-                        <Trash2 size={16} color="#DC2626" />
-                      </TouchableOpacity>
+                    <View style={[styles.extraInfo]}>
+                      {reminder.description && (
+                        <Text style={styles.reminderDescription}>
+                          {reminder.description}
+                        </Text>
+                      )}
+
+                      <View style={styles.divider} />
+
+                      {reminder.dosage && (
+                        <Text style={styles.reminderDosage}>
+                          Dosage: {reminder.dosage}
+                        </Text>
+                      )}
+
+                      {reminder.duration && (
+                        <Text style={styles.reminderDosage}>
+                          Duration: {reminder.duration}
+                        </Text>
+                      )}
+
+                      {reminder.mediaLink && (
+                        <Text
+                          style={styles.linkText}
+                          onPress={() =>
+                            reminder.mediaLink &&
+                            Linking.openURL(reminder.mediaLink)
+                          }
+                        >
+                          {`${reminder.type
+                            .charAt(0)
+                            .toUpperCase()}${reminder.type.slice(1)} Link`}
+                        </Text>
+                      )}
+
+                      {reminder.mediaImage &&
+                        reminder.mediaImage.length > 0 && (
+                          <TouchableOpacity
+                            onPress={() => {
+                              setSelectedImages(reminder.mediaImage ?? []);
+                              setImageIndex(0);
+                              setVisible(true);
+                            }}
+                          >
+                            <Text style={styles.linkText}>
+                              View Images ({reminder.mediaImage.length})
+                            </Text>
+                          </TouchableOpacity>
+                        )}
                     </View>
                   </View>
                 ))}
@@ -1202,34 +1287,41 @@ export default function RemindersScreen() {
                     <View style={{ flexDirection: 'row', gap: 12 }}>
                       <TouchableOpacity
                         style={styles.typeButton}
-                        onPress={() =>
-                          pickImage(true, (uris) =>
-                            setFormData((prev) => ({
-                              ...prev,
-                              mediaImage: [...(prev.mediaImage || []), ...uris],
-                            }))
-                          )
-                        }
+                        onPress={() => pickImage(handleImagesAdded)}
                       >
                         <Text style={styles.typeButtonText}>Use Camera</Text>
                       </TouchableOpacity>
 
                       <TouchableOpacity
                         style={styles.typeButton}
-                        onPress={() =>
-                          pickImage(false, (uris) =>
-                            setFormData((prev) => ({
-                              ...prev,
-                              mediaImage: [...(prev.mediaImage || []), ...uris],
-                            }))
-                          )
-                        }
+                        onPress={() => pickImage(handleImagesAdded)}
                       >
                         <Text style={styles.typeButtonText}>
                           Pick from Gallery
                         </Text>
                       </TouchableOpacity>
                     </View>
+                    {imagesAddedFeedback && (
+                      <Text
+                        style={{
+                          color: '#2563EB',
+                          marginTop: 8,
+                          fontSize: 16,
+                          textAlign: 'center',
+                          fontWeight: '600',
+                        }}
+                      >
+                        Images added!
+                      </Text>
+                    )}
+
+                    {loadingImages && (
+                      <ActivityIndicator
+                        size="small"
+                        color="#2563EB"
+                        style={{ marginTop: 8 }}
+                      />
+                    )}
                   </View>
                 </ScrollView>
               </KeyboardAvoidingView>
@@ -1358,6 +1450,7 @@ const styles = StyleSheet.create({
   },
   reminderMeta: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     gap: 4,
   },
@@ -1379,6 +1472,13 @@ const styles = StyleSheet.create({
   reminderActions: {
     alignItems: 'center',
   },
+  reminderActionsRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 12,
+  },
   completeButton: {
     width: 32,
     height: 32,
@@ -1398,8 +1498,9 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   actionButtons: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
+    flexDirection: 'column',
+    justifyContent: 'left-align',
+    alignItems: 'flex-start',
     gap: 8,
     marginTop: 8,
     paddingTop: 8,
@@ -1554,5 +1655,30 @@ const styles = StyleSheet.create({
   dropdownItemText: {
     fontSize: 16,
     color: '#1E293B',
+  },
+  toggleButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#F8FAFC',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  divider: {
+    height: 1,
+    backgroundColor: '#E2E8F0',
+    marginVertical: 8,
+  },
+  extraInfo: {
+    marginLeft: 52, // aligns with text under icon
+    marginTop: 4,
+    gap: 4, // space between each line
+  },
+
+  linkText: {
+    color: '#2563EB',
+    textDecorationLine: 'underline',
+    fontSize: 13,
+    fontFamily: 'Inter-Regular',
   },
 });
