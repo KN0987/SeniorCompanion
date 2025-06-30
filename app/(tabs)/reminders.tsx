@@ -9,6 +9,12 @@ import {
   TextInput,
   Switch,
   Platform,
+  Image,
+  Linking,
+  KeyboardAvoidingView,
+  TouchableWithoutFeedback,
+  Keyboard,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState, useEffect, useMemo } from 'react';
@@ -27,6 +33,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { format } from 'date-fns';
 import * as Notifications from 'expo-notifications';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import * as ImagePicker from 'expo-image-picker';
+import ImageViewing from 'react-native-image-viewing';
+import * as ImageManipulator from 'expo-image-manipulator';
 
 interface Interval {
   minutes?: number;
@@ -52,6 +61,8 @@ interface Reminder {
   notificationMode?: 'specificDays' | 'interval';
   repeatMode: 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly';
   interval?: Interval;
+  mediaLink?: string;
+  mediaImage?: string[];
 }
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -66,6 +77,11 @@ export default function RemindersScreen() {
     useState<keyof Interval>('minutes');
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [pickerTime, setPickerTime] = useState(new Date());
+  const [visible, setVisible] = useState(false);
+  const [imageIndex, setImageIndex] = useState(0);
+  const [selectedImages, setSelectedImages] = useState<string[]>([]);
+  const [imagesAddedFeedback, setImagesAddedFeedback] = useState(false);
+  const [loadingImages, setLoadingImages] = useState(false);
   const [formData, setFormData] = useState({
     title: '',
     type: 'medication' as 'medication' | 'exercise',
@@ -77,6 +93,8 @@ export default function RemindersScreen() {
     notificationMode: 'specificDays' as 'specificDays' | 'interval',
     repeatMode: 'none' as 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly',
     interval: {} as Interval,
+    mediaLink: '',
+    mediaImage: [] as string[],
   });
 
   const repeatOptions = [
@@ -160,6 +178,8 @@ export default function RemindersScreen() {
       notificationMode: 'specificDays',
       repeatMode: 'none',
       interval: {},
+      mediaLink: '',
+      mediaImage: [],
     });
     setShowModal(true);
   };
@@ -177,6 +197,8 @@ export default function RemindersScreen() {
       notificationMode: reminder.notificationMode || 'specificDays',
       repeatMode: reminder.repeatMode || 'none',
       interval: reminder.interval || {},
+      mediaLink: reminder.mediaLink || '',
+      mediaImage: reminder.mediaImage || [],
     });
     setShowModal(true);
   };
@@ -221,6 +243,8 @@ export default function RemindersScreen() {
           ? formData.interval
           : undefined,
       repeatMode: formData.repeatMode,
+      mediaLink: formData.mediaLink,
+      mediaImage: formData.mediaImage,
     };
 
     const notificationIds = await scheduleReminderNotification(newReminder);
@@ -238,11 +262,6 @@ export default function RemindersScreen() {
     setReminders(updatedReminders);
     await saveReminders(updatedReminders);
     setShowModal(false);
-
-    // get all notifications
-    const allNotifications =
-      await Notifications.getAllScheduledNotificationsAsync();
-    console.log('All scheduled notifications:', allNotifications);
   };
 
   async function deleteReminderById(
@@ -507,566 +526,817 @@ export default function RemindersScreen() {
     }
   }
 
+  const pickImage = async (callback) => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsMultipleSelection: true,
+      quality: 0.5,
+      base64: false,
+    });
+
+    if (!result.canceled) {
+      setLoadingImages(true);
+      try {
+        const compressedUris = [];
+
+        for (const asset of result.assets) {
+          const compressed = await ImageManipulator.manipulateAsync(
+            asset.uri,
+            [{ resize: { width: 800 } }],
+            { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
+          );
+          compressedUris.push(compressed.uri);
+        }
+
+        if (callback) {
+          callback(compressedUris);
+        } else {
+          setFormData((prev) => ({
+            ...prev,
+            mediaImage: [...(prev.mediaImage || []), ...compressedUris],
+          }));
+        }
+      } catch (err) {
+        console.error('Image compression failed:', err);
+      } finally {
+        setLoadingImages(false);
+      }
+    }
+  };
+
+  const handleImagesAdded = (uris) => {
+    setFormData((prev) => ({
+      ...prev,
+      mediaImage: [...(prev.mediaImage || []), ...uris],
+    }));
+    setImagesAddedFeedback(true);
+
+    setTimeout(() => setImagesAddedFeedback(false), 2000);
+  };
+
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Reminders</Text>
-        <TouchableOpacity style={styles.addButton} onPress={addReminder}>
-          <Plus size={24} color="white" />
-        </TouchableOpacity>
-      </View>
-
-      <ScrollView showsVerticalScrollIndicator={false}>
-        {/* Today's Reminders */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Today</Text>
-          {todayReminders.length === 0 ? (
-            <View style={styles.emptyCard}>
-              <Text style={styles.emptyText}>No reminders for today</Text>
-            </View>
-          ) : (
-            todayReminders.map((reminder) => (
-              <View key={reminder.id} style={styles.reminderCard}>
-                <View style={styles.reminderHeader}>
-                  <View style={styles.reminderIcon}>
-                    {reminder.type === 'medication' ? (
-                      <Pill
-                        size={20}
-                        color={reminder.completed ? '#94A3B8' : '#2563EB'}
-                      />
-                    ) : (
-                      <Activity
-                        size={20}
-                        color={reminder.completed ? '#94A3B8' : '#059669'}
-                      />
-                    )}
-                  </View>
-                  <View style={styles.reminderInfo}>
-                    <Text
-                      style={[
-                        styles.reminderTitle,
-                        reminder.completed && styles.completedText,
-                      ]}
-                    >
-                      {reminder.title}
-                    </Text>
-                    <View style={styles.reminderMeta}>
-                      <Clock size={14} color="#64748B" />
-                      <Text style={styles.reminderTime}>
-                        {reminder.notificationMode === 'interval' &&
-                        reminder.interval
-                          ? (() => {
-                              const unitEntry = Object.entries(
-                                reminder.interval
-                              ).find(
-                                ([_, value]) =>
-                                  value !== undefined && value !== 0
-                              );
-                              if (unitEntry) {
-                                const [unit, value] = unitEntry;
-                                return `Every ${value} ${unit}`;
-                              }
-                              return '';
-                            })()
-                          : reminder.time}
-                      </Text>
-                      {reminder.dosage && (
-                        <Text style={styles.reminderDosage}>
-                          • {reminder.dosage}
-                        </Text>
-                      )}
-                      {reminder.duration && (
-                        <Text style={styles.reminderDosage}>
-                          • {reminder.duration}
-                        </Text>
-                      )}
-                    </View>
-                  </View>
-                  <TouchableOpacity
-                    style={[
-                      styles.completeButton,
-                      reminder.completed && styles.completedButton,
-                    ]}
-                    onPress={() => markCompleted(reminder.id)}
-                  >
-                    <Check
-                      size={16}
-                      color={reminder.completed ? '#059669' : '#CBD5E1'}
-                    />
-                  </TouchableOpacity>
-                </View>
-                {reminder.description && (
-                  <Text style={styles.reminderDescription}>
-                    {reminder.description}
-                  </Text>
-                )}
-              </View>
-            ))
-          )}
-        </View>
-
-        {/* All Reminders */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>All Reminders</Text>
-          {[...reminders]
-            .sort((a, b) => {
-              return timeStringToMinutes(a.time) - timeStringToMinutes(b.time);
-            })
-            .map((reminder) => (
-              <View
-                key={`${reminder.id}-${reminder.title}-${reminder.time}-${
-                  reminder.description
-                }-${reminder.dosage}-${reminder.duration}-${reminder.days.join(
-                  ','
-                )}`}
-                style={styles.allReminderCard}
-              >
-                <View style={styles.reminderHeader}>
-                  <View style={styles.reminderIcon}>
-                    {reminder.type === 'medication' ? (
-                      <Pill
-                        size={20}
-                        color={reminder.isActive ? '#2563EB' : '#94A3B8'}
-                      />
-                    ) : (
-                      <Activity
-                        size={20}
-                        color={reminder.isActive ? '#059669' : '#94A3B8'}
-                      />
-                    )}
-                  </View>
-                  <View style={styles.reminderInfo}>
-                    <Text
-                      style={[
-                        styles.reminderTitle,
-                        !reminder.isActive && styles.inactiveText,
-                      ]}
-                    >
-                      {reminder.title}
-                    </Text>
-                    <View style={styles.reminderMeta}>
-                      <Clock size={14} color="#64748B" />
-                      <Text style={styles.reminderTime}>
-                        {reminder.notificationMode === 'interval' &&
-                        reminder.interval
-                          ? (() => {
-                              const unitEntry = Object.entries(
-                                reminder.interval
-                              ).find(
-                                ([_, value]) =>
-                                  value !== undefined && value !== 0
-                              );
-                              if (unitEntry) {
-                                const [unit, value] = unitEntry;
-                                return `Every ${value} ${unit}`;
-                              }
-                              return '';
-                            })()
-                          : reminder.time}
-                      </Text>
-                      {reminder.notificationMode === 'specificDays' && (
-                        <Text style={styles.reminderDays}>
-                          •{' '}
-                          {DAYS.filter((d) => reminder.days.includes(d)).join(
-                            ', '
-                          )}
-                        </Text>
-                      )}
-                    </View>
-                  </View>
-                  <View style={styles.reminderActions}>
-                    <Switch
-                      value={reminder.isActive}
-                      onValueChange={() => toggleReminder(reminder.id)}
-                      trackColor={{ false: '#E2E8F0', true: '#DBEAFE' }}
-                      thumbColor={reminder.isActive ? '#2563EB' : '#94A3B8'}
-                    />
-                  </View>
-                </View>
-                <View style={styles.actionButtons}>
-                  <TouchableOpacity
-                    style={styles.actionButton}
-                    onPress={() => editReminder(reminder)}
-                  >
-                    <Edit2 size={16} color="#64748B" />
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.actionButton}
-                    onPress={() => deleteReminder(reminder.id)}
-                  >
-                    <Trash2 size={16} color="#DC2626" />
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ))}
-        </View>
-      </ScrollView>
-
-      {/* Add/Edit Modal */}
-      <Modal
-        visible={showModal}
-        animationType="slide"
-        presentationStyle="pageSheet"
-      >
-        <SafeAreaView style={styles.modalContainer}>
-          <View style={styles.modalHeader}>
-            <TouchableOpacity onPress={() => setShowModal(false)}>
-              <X size={24} color="#64748B" />
-            </TouchableOpacity>
-            <Text style={styles.modalTitle}>
-              {editingReminder ? 'Edit Reminder' : 'Add Reminder'}
-            </Text>
-            <TouchableOpacity onPress={saveReminder}>
-              <Text style={styles.saveButton}>Save</Text>
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 0} // adjust as needed
+    >
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+        <SafeAreaView style={styles.container}>
+          <View style={styles.header}>
+            <Text style={styles.title}>Reminders</Text>
+            <TouchableOpacity style={styles.addButton} onPress={addReminder}>
+              <Plus size={24} color="white" />
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={styles.modalContent}>
-            <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Title*</Text>
-              <TextInput
-                style={styles.formInput}
-                value={formData.title}
-                onChangeText={(text) =>
-                  setFormData((prev) => ({ ...prev, title: text }))
-                }
-                placeholder="Enter reminder title"
-              />
+          <ScrollView showsVerticalScrollIndicator={false}>
+            {/* Today's Reminders */}
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Today</Text>
+              {todayReminders.length === 0 ? (
+                <View style={styles.emptyCard}>
+                  <Text style={styles.emptyText}>No reminders for today</Text>
+                </View>
+              ) : (
+                todayReminders.map((reminder) => (
+                  <View key={reminder.id} style={styles.reminderCard}>
+                    <View style={styles.reminderHeader}>
+                      <View style={styles.reminderIcon}>
+                        {reminder.type === 'medication' ? (
+                          <Pill
+                            size={20}
+                            color={reminder.completed ? '#94A3B8' : '#2563EB'}
+                          />
+                        ) : (
+                          <Activity
+                            size={20}
+                            color={reminder.completed ? '#94A3B8' : '#059669'}
+                          />
+                        )}
+                      </View>
+                      <View style={styles.reminderInfo}>
+                        <Text
+                          style={[
+                            styles.reminderTitle,
+                            reminder.completed && styles.completedText,
+                          ]}
+                        >
+                          {reminder.title}
+                        </Text>
+                        <View style={styles.reminderMeta}>
+                          <Clock size={14} color="#64748B" />
+                          <Text style={styles.reminderTime}>
+                            {reminder.notificationMode === 'interval' &&
+                            reminder.interval
+                              ? (() => {
+                                  const unitEntry = Object.entries(
+                                    reminder.interval
+                                  ).find(
+                                    ([_, value]) =>
+                                      value !== undefined && value !== 0
+                                  );
+                                  if (unitEntry) {
+                                    const [unit, value] = unitEntry;
+                                    return `Every ${value} ${unit}`;
+                                  }
+                                  return '';
+                                })()
+                              : reminder.time}
+                          </Text>
+                          {reminder.dosage && (
+                            <Text style={styles.reminderDosage}>
+                              • {reminder.dosage}
+                            </Text>
+                          )}
+                          {reminder.duration && (
+                            <Text style={styles.reminderDosage}>
+                              • {reminder.duration}
+                            </Text>
+                          )}
+                        </View>
+                      </View>
+                      <TouchableOpacity
+                        style={[
+                          styles.completeButton,
+                          reminder.completed && styles.completedButton,
+                        ]}
+                        onPress={() => markCompleted(reminder.id)}
+                      >
+                        <Check
+                          size={16}
+                          color={reminder.completed ? '#059669' : '#CBD5E1'}
+                        />
+                      </TouchableOpacity>
+                    </View>
+                    {reminder.description && (
+                      <Text style={styles.reminderDescription}>
+                        {reminder.description}
+                      </Text>
+                    )}
+                    {reminder.mediaLink && (
+                      <View style={{ marginTop: 8 }}>
+                        <Text
+                          style={{
+                            color: '#2563EB',
+                            textDecorationLine: 'underline',
+                          }}
+                          onPress={() => {
+                            if (reminder.mediaLink) {
+                              Linking.openURL(reminder.mediaLink);
+                            }
+                          }}
+                        >
+                          {`${reminder.type
+                            .charAt(0)
+                            .toUpperCase()}${reminder.type.slice(1)} Link`}
+                        </Text>
+                      </View>
+                    )}
+                    {reminder.mediaImage && reminder.mediaImage.length > 0 && (
+                      <TouchableOpacity
+                        onPress={() => {
+                          setSelectedImages(reminder.mediaImage ?? []);
+                          setImageIndex(0);
+                          setVisible(true);
+                        }}
+                        style={{ marginTop: 8 }}
+                      >
+                        <Text
+                          style={{
+                            color: '#2563EB',
+                            textDecorationLine: 'underline',
+                          }}
+                        >
+                          View Images ({reminder.mediaImage.length})
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                ))
+              )}
             </View>
 
-            <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Type</Text>
-              <View style={styles.typeButtons}>
-                <TouchableOpacity
-                  style={[
-                    styles.typeButton,
-                    formData.type === 'medication' && styles.typeButtonActive,
-                  ]}
-                  onPress={() =>
-                    setFormData((prev) => ({ ...prev, type: 'medication' }))
-                  }
-                >
-                  <Pill
-                    size={20}
-                    color={formData.type === 'medication' ? 'white' : '#64748B'}
-                  />
-                  <Text
-                    style={[
-                      styles.typeButtonText,
-                      formData.type === 'medication' &&
-                        styles.typeButtonTextActive,
-                    ]}
+            {/* All Reminders */}
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>All Reminders</Text>
+              {[...reminders]
+                .sort((a, b) => {
+                  return (
+                    timeStringToMinutes(a.time) - timeStringToMinutes(b.time)
+                  );
+                })
+                .map((reminder) => (
+                  <View
+                    key={`${reminder.id}-${reminder.title}-${reminder.time}-${
+                      reminder.description
+                    }-${reminder.dosage}-${
+                      reminder.duration
+                    }-${reminder.days.join(',')}`}
+                    style={styles.allReminderCard}
                   >
-                    Medication
-                  </Text>
+                    <View style={styles.reminderHeader}>
+                      <View style={styles.reminderIcon}>
+                        {reminder.type === 'medication' ? (
+                          <Pill
+                            size={20}
+                            color={reminder.isActive ? '#2563EB' : '#94A3B8'}
+                          />
+                        ) : (
+                          <Activity
+                            size={20}
+                            color={reminder.isActive ? '#059669' : '#94A3B8'}
+                          />
+                        )}
+                      </View>
+                      <View style={styles.reminderInfo}>
+                        <Text
+                          style={[
+                            styles.reminderTitle,
+                            !reminder.isActive && styles.inactiveText,
+                          ]}
+                        >
+                          {reminder.title}
+                        </Text>
+                        <View style={styles.reminderMeta}>
+                          <Clock size={14} color="#64748B" />
+                          <Text style={styles.reminderTime}>
+                            {reminder.notificationMode === 'interval' &&
+                            reminder.interval
+                              ? (() => {
+                                  const unitEntry = Object.entries(
+                                    reminder.interval
+                                  ).find(
+                                    ([_, value]) =>
+                                      value !== undefined && value !== 0
+                                  );
+                                  if (unitEntry) {
+                                    const [unit, value] = unitEntry;
+                                    return `Every ${value} ${unit}`;
+                                  }
+                                  return '';
+                                })()
+                              : reminder.time}
+                          </Text>
+                          {reminder.notificationMode === 'specificDays' && (
+                            <Text style={styles.reminderDays}>
+                              •{' '}
+                              {DAYS.filter((d) =>
+                                reminder.days.includes(d)
+                              ).join(', ')}
+                            </Text>
+                          )}
+                        </View>
+                      </View>
+                      <View style={styles.reminderActionsRow}>
+                        <TouchableOpacity
+                          style={styles.toggleButton}
+                          onPress={() => editReminder(reminder)}
+                        >
+                          <Edit2 size={16} color="#64748B" />
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          style={styles.toggleButton}
+                          onPress={() => deleteReminder(reminder.id)}
+                        >
+                          <Trash2 size={16} color="#DC2626" />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.toggleButton}
+                          onPress={() => toggleReminder(reminder.id)}
+                        >
+                          <Switch
+                            value={reminder.isActive}
+                            onValueChange={() => toggleReminder(reminder.id)}
+                            trackColor={{ false: '#E2E8F0', true: '#DBEAFE' }}
+                            thumbColor={
+                              reminder.isActive ? '#2563EB' : '#94A3B8'
+                            }
+                            style={{
+                              transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }],
+                            }}
+                          />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                    <View style={[styles.extraInfo]}>
+                      {reminder.description && (
+                        <Text style={styles.reminderDescription}>
+                          {reminder.description}
+                        </Text>
+                      )}
+
+                      <View style={styles.divider} />
+
+                      {reminder.dosage && (
+                        <Text style={styles.reminderDosage}>
+                          Dosage: {reminder.dosage}
+                        </Text>
+                      )}
+
+                      {reminder.duration && (
+                        <Text style={styles.reminderDosage}>
+                          Duration: {reminder.duration}
+                        </Text>
+                      )}
+
+                      {reminder.mediaLink && (
+                        <Text
+                          style={styles.linkText}
+                          onPress={() =>
+                            reminder.mediaLink &&
+                            Linking.openURL(reminder.mediaLink)
+                          }
+                        >
+                          {`${reminder.type
+                            .charAt(0)
+                            .toUpperCase()}${reminder.type.slice(1)} Link`}
+                        </Text>
+                      )}
+
+                      {reminder.mediaImage &&
+                        reminder.mediaImage.length > 0 && (
+                          <TouchableOpacity
+                            onPress={() => {
+                              setSelectedImages(reminder.mediaImage ?? []);
+                              setImageIndex(0);
+                              setVisible(true);
+                            }}
+                          >
+                            <Text style={styles.linkText}>
+                              View Images ({reminder.mediaImage.length})
+                            </Text>
+                          </TouchableOpacity>
+                        )}
+                    </View>
+                  </View>
+                ))}
+            </View>
+          </ScrollView>
+
+          {/* Add/Edit Modal */}
+          <Modal
+            visible={showModal}
+            animationType="slide"
+            presentationStyle="pageSheet"
+          >
+            <SafeAreaView style={styles.modalContainer}>
+              <View style={styles.modalHeader}>
+                <TouchableOpacity onPress={() => setShowModal(false)}>
+                  <X size={24} color="#64748B" />
                 </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    styles.typeButton,
-                    formData.type === 'exercise' && styles.typeButtonActive,
-                  ]}
-                  onPress={() =>
-                    setFormData((prev) => ({ ...prev, type: 'exercise' }))
-                  }
-                >
-                  <Activity
-                    size={20}
-                    color={formData.type === 'exercise' ? 'white' : '#64748B'}
-                  />
-                  <Text
-                    style={[
-                      styles.typeButtonText,
-                      formData.type === 'exercise' &&
-                        styles.typeButtonTextActive,
-                    ]}
-                  >
-                    Exercise
-                  </Text>
+                <Text style={styles.modalTitle}>
+                  {editingReminder ? 'Edit Reminder' : 'Add Reminder'}
+                </Text>
+                <TouchableOpacity onPress={saveReminder}>
+                  <Text style={styles.saveButton}>Save</Text>
                 </TouchableOpacity>
               </View>
-            </View>
 
-            {/* Repeat Mode Picker */}
-            <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Notifications Mode</Text>
-              <View style={{ flexDirection: 'row', gap: 12 }}>
-                <TouchableOpacity
-                  style={[
-                    styles.typeButton,
-                    formData.notificationMode === 'specificDays' &&
-                      styles.typeButtonActive,
-                  ]}
-                  onPress={() =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      notificationMode: 'specificDays',
-                    }))
-                  }
+              <KeyboardAvoidingView
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                style={{ flex: 1 }}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 0} // Adjust as needed
+              >
+                <ScrollView
+                  style={styles.modalContent}
+                  contentContainerStyle={{ paddingBottom: 40 }}
+                  keyboardShouldPersistTaps="handled"
+                  keyboardDismissMode="interactive"
                 >
-                  <Text
-                    style={[
-                      styles.typeButtonText,
-                      formData.notificationMode === 'specificDays' &&
-                        styles.typeButtonTextActive,
-                    ]}
-                  >
-                    Specific Days
-                  </Text>
-                </TouchableOpacity>
+                  <View style={styles.formGroup}>
+                    <Text style={styles.formLabel}>Title*</Text>
+                    <TextInput
+                      style={styles.formInput}
+                      value={formData.title}
+                      onChangeText={(text) =>
+                        setFormData((prev) => ({ ...prev, title: text }))
+                      }
+                      placeholder="Enter reminder title"
+                    />
+                  </View>
 
-                <TouchableOpacity
-                  style={[
-                    styles.typeButton,
-                    formData.notificationMode === 'interval' &&
-                      styles.typeButtonActive,
-                  ]}
-                  onPress={() =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      notificationMode: 'interval',
-                    }))
-                  }
-                >
-                  <Text
-                    style={[
-                      styles.typeButtonText,
-                      formData.notificationMode === 'interval' &&
-                        styles.typeButtonTextActive,
-                    ]}
-                  >
-                    Every X Hours
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            {formData.notificationMode === 'specificDays' && (
-              <>
-                <View style={styles.formGroup}>
-                  <Text style={styles.formLabel}>Time</Text>
-                  <TouchableOpacity
-                    style={styles.formInput}
-                    onPress={() => setShowTimePicker(true)}
-                  >
-                    <Text style={{ fontSize: 16 }}>
-                      {format(pickerTime, 'hh:mm a')}
-                    </Text>
-                  </TouchableOpacity>
-                  {showTimePicker && (
-                    <DateTimePicker
-                      value={pickerTime}
-                      mode="time"
-                      is24Hour={false}
-                      display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                      onChange={(event, selectedDate) => {
-                        if (Platform.OS !== 'ios') setShowTimePicker(false);
-                        if (selectedDate) {
-                          setPickerTime(selectedDate);
-                          const formatted = format(selectedDate, 'HH:mm');
+                  <View style={styles.formGroup}>
+                    <Text style={styles.formLabel}>Type</Text>
+                    <View style={styles.typeButtons}>
+                      <TouchableOpacity
+                        style={[
+                          styles.typeButton,
+                          formData.type === 'medication' &&
+                            styles.typeButtonActive,
+                        ]}
+                        onPress={() =>
                           setFormData((prev) => ({
                             ...prev,
-                            time: formatted,
-                          }));
+                            type: 'medication',
+                          }))
                         }
-                      }}
-                    />
-                  )}
-                </View>
-
-                <View style={styles.formGroup}>
-                  <Text style={styles.formLabel}>Days*</Text>
-                  <View style={styles.daysContainer}>
-                    {DAYS.map((day) => (
+                      >
+                        <Pill
+                          size={20}
+                          color={
+                            formData.type === 'medication' ? 'white' : '#64748B'
+                          }
+                        />
+                        <Text
+                          style={[
+                            styles.typeButtonText,
+                            formData.type === 'medication' &&
+                              styles.typeButtonTextActive,
+                          ]}
+                        >
+                          Medication
+                        </Text>
+                      </TouchableOpacity>
                       <TouchableOpacity
-                        key={day}
                         style={[
-                          styles.dayButton,
-                          formData.days.includes(day) && styles.dayButtonActive,
+                          styles.typeButton,
+                          formData.type === 'exercise' &&
+                            styles.typeButtonActive,
                         ]}
-                        onPress={() => toggleDay(day)}
+                        onPress={() =>
+                          setFormData((prev) => ({ ...prev, type: 'exercise' }))
+                        }
+                      >
+                        <Activity
+                          size={20}
+                          color={
+                            formData.type === 'exercise' ? 'white' : '#64748B'
+                          }
+                        />
+                        <Text
+                          style={[
+                            styles.typeButtonText,
+                            formData.type === 'exercise' &&
+                              styles.typeButtonTextActive,
+                          ]}
+                        >
+                          Exercise
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
+                  {/* Repeat Mode Picker */}
+                  <View style={styles.formGroup}>
+                    <Text style={styles.formLabel}>Notifications Mode</Text>
+                    <View style={{ flexDirection: 'row', gap: 12 }}>
+                      <TouchableOpacity
+                        style={[
+                          styles.typeButton,
+                          formData.notificationMode === 'specificDays' &&
+                            styles.typeButtonActive,
+                        ]}
+                        onPress={() =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            notificationMode: 'specificDays',
+                          }))
+                        }
                       >
                         <Text
                           style={[
-                            styles.dayButtonText,
-                            formData.days.includes(day) &&
-                              styles.dayButtonTextActive,
+                            styles.typeButtonText,
+                            formData.notificationMode === 'specificDays' &&
+                              styles.typeButtonTextActive,
                           ]}
                         >
-                          {day}
+                          Specific Days
                         </Text>
                       </TouchableOpacity>
-                    ))}
-                  </View>
-                </View>
 
-                <View style={styles.formGroup}>
-                  <Text style={styles.formLabel}>Repeat Mode</Text>
-                  <TouchableOpacity
-                    onPress={() => setShowRepeatDropdown((prev) => !prev)}
-                    style={styles.dropdownButton}
-                  >
-                    <Text style={styles.dropdownButtonText}>
-                      {
-                        repeatOptions.find(
-                          (opt) => opt.value === formData.repeatMode
-                        )?.label
-                      }
-                    </Text>
-                  </TouchableOpacity>
-
-                  {showRepeatDropdown && (
-                    <View style={styles.dropdownList}>
-                      {repeatOptions.map((option) => (
-                        <TouchableOpacity
-                          key={option.value}
-                          style={styles.dropdownItem}
-                          onPress={() => {
-                            setFormData((prev) => ({
-                              ...prev,
-                              repeatMode:
-                                option.value as typeof formData.repeatMode,
-                            }));
-                            setShowRepeatDropdown(false);
-                          }}
-                        >
-                          <Text
-                            style={[
-                              styles.dropdownItemText,
-                              formData.repeatMode === option.value && {
-                                fontWeight: 'bold',
-                              },
-                            ]}
-                          >
-                            {option.label}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  )}
-                </View>
-              </>
-            )}
-
-            {formData.notificationMode === 'interval' && (
-              <View style={styles.formGroup}>
-                <Text style={styles.formLabel}>Repeat Interval</Text>
-
-                {/* Dropdown for selecting unit */}
-                <View
-                  style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
-                >
-                  <Text style={styles.formLabel}>Every</Text>
-                  <TextInput
-                    style={[styles.formInput, { flex: 1 }]}
-                    keyboardType="numeric"
-                    placeholder="e.g., 1"
-                    value={
-                      formData.interval?.[selectedIntervalUnit]?.toString() ??
-                      ''
-                    }
-                    onChangeText={(text) => {
-                      setFormData((prev) => ({
-                        ...prev,
-                        interval: {
-                          [selectedIntervalUnit]:
-                            text === '' ? undefined : parseInt(text) || 0,
-                        },
-                      }));
-                    }}
-                  />
-
-                  <TouchableOpacity
-                    style={styles.dropdownButton}
-                    onPress={() => setShowUnitDropdown(true)}
-                  >
-                    <Text style={styles.dropdownButtonText}>
-                      {selectedIntervalUnit}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-
-                {/* Dropdown list of units */}
-                {showUnitDropdown && (
-                  <View style={styles.dropdownList}>
-                    {(
-                      [
-                        'minutes',
-                        'hours',
-                        'days',
-                        'weeks',
-                        'months',
-                        'years',
-                      ] as (keyof Interval)[]
-                    ).map((unit) => (
                       <TouchableOpacity
-                        key={unit}
-                        style={styles.dropdownItem}
-                        onPress={() => {
-                          const currentValue =
-                            formData.interval?.[selectedIntervalUnit];
-                          setSelectedIntervalUnit(unit);
+                        style={[
+                          styles.typeButton,
+                          formData.notificationMode === 'interval' &&
+                            styles.typeButtonActive,
+                        ]}
+                        onPress={() =>
                           setFormData((prev) => ({
                             ...prev,
-                            interval: {
-                              [unit]: currentValue,
-                            },
-                          }));
-                          setShowUnitDropdown(false);
+                            notificationMode: 'interval',
+                          }))
+                        }
+                      >
+                        <Text
+                          style={[
+                            styles.typeButtonText,
+                            formData.notificationMode === 'interval' &&
+                              styles.typeButtonTextActive,
+                          ]}
+                        >
+                          Every X Hours
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
+                  {formData.notificationMode === 'specificDays' && (
+                    <>
+                      <View style={styles.formGroup}>
+                        <Text style={styles.formLabel}>Time</Text>
+                        <TouchableOpacity
+                          style={styles.formInput}
+                          onPress={() => setShowTimePicker(true)}
+                        >
+                          <Text style={{ fontSize: 16 }}>
+                            {format(pickerTime, 'hh:mm a')}
+                          </Text>
+                        </TouchableOpacity>
+                        {showTimePicker && (
+                          <DateTimePicker
+                            value={pickerTime}
+                            mode="time"
+                            is24Hour={false}
+                            display={
+                              Platform.OS === 'ios' ? 'spinner' : 'default'
+                            }
+                            onChange={(event, selectedDate) => {
+                              if (Platform.OS !== 'ios')
+                                setShowTimePicker(false);
+                              if (selectedDate) {
+                                setPickerTime(selectedDate);
+                                const formatted = format(selectedDate, 'HH:mm');
+                                setFormData((prev) => ({
+                                  ...prev,
+                                  time: formatted,
+                                }));
+                              }
+                            }}
+                          />
+                        )}
+                      </View>
+
+                      <View style={styles.formGroup}>
+                        <Text style={styles.formLabel}>Days*</Text>
+                        <View style={styles.daysContainer}>
+                          {DAYS.map((day) => (
+                            <TouchableOpacity
+                              key={day}
+                              style={[
+                                styles.dayButton,
+                                formData.days.includes(day) &&
+                                  styles.dayButtonActive,
+                              ]}
+                              onPress={() => toggleDay(day)}
+                            >
+                              <Text
+                                style={[
+                                  styles.dayButtonText,
+                                  formData.days.includes(day) &&
+                                    styles.dayButtonTextActive,
+                                ]}
+                              >
+                                {day}
+                              </Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      </View>
+
+                      <View style={styles.formGroup}>
+                        <Text style={styles.formLabel}>Repeat Mode</Text>
+                        <TouchableOpacity
+                          onPress={() => setShowRepeatDropdown((prev) => !prev)}
+                          style={styles.dropdownButton}
+                        >
+                          <Text style={styles.dropdownButtonText}>
+                            {
+                              repeatOptions.find(
+                                (opt) => opt.value === formData.repeatMode
+                              )?.label
+                            }
+                          </Text>
+                        </TouchableOpacity>
+
+                        {showRepeatDropdown && (
+                          <View style={styles.dropdownList}>
+                            {repeatOptions.map((option) => (
+                              <TouchableOpacity
+                                key={option.value}
+                                style={styles.dropdownItem}
+                                onPress={() => {
+                                  setFormData((prev) => ({
+                                    ...prev,
+                                    repeatMode:
+                                      option.value as typeof formData.repeatMode,
+                                  }));
+                                  setShowRepeatDropdown(false);
+                                }}
+                              >
+                                <Text
+                                  style={[
+                                    styles.dropdownItemText,
+                                    formData.repeatMode === option.value && {
+                                      fontWeight: 'bold',
+                                    },
+                                  ]}
+                                >
+                                  {option.label}
+                                </Text>
+                              </TouchableOpacity>
+                            ))}
+                          </View>
+                        )}
+                      </View>
+                    </>
+                  )}
+
+                  {formData.notificationMode === 'interval' && (
+                    <View style={styles.formGroup}>
+                      <Text style={styles.formLabel}>Repeat Interval</Text>
+
+                      {/* Dropdown for selecting unit */}
+                      <View
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          gap: 8,
                         }}
                       >
-                        <Text style={styles.dropdownItemText}>{unit}</Text>
-                      </TouchableOpacity>
-                    ))}
+                        <Text style={styles.formLabel}>Every</Text>
+                        <TextInput
+                          style={[styles.formInput, { flex: 1 }]}
+                          keyboardType="numeric"
+                          placeholder="e.g., 1"
+                          value={
+                            formData.interval?.[
+                              selectedIntervalUnit
+                            ]?.toString() ?? ''
+                          }
+                          onChangeText={(text) => {
+                            setFormData((prev) => ({
+                              ...prev,
+                              interval: {
+                                [selectedIntervalUnit]:
+                                  text === '' ? undefined : parseInt(text) || 0,
+                              },
+                            }));
+                          }}
+                        />
+
+                        <TouchableOpacity
+                          style={styles.dropdownButton}
+                          onPress={() => setShowUnitDropdown(true)}
+                        >
+                          <Text style={styles.dropdownButtonText}>
+                            {selectedIntervalUnit}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+
+                      {/* Dropdown list of units */}
+                      {showUnitDropdown && (
+                        <View style={styles.dropdownList}>
+                          {(
+                            [
+                              'minutes',
+                              'hours',
+                              'days',
+                              'weeks',
+                              'months',
+                              'years',
+                            ] as (keyof Interval)[]
+                          ).map((unit) => (
+                            <TouchableOpacity
+                              key={unit}
+                              style={styles.dropdownItem}
+                              onPress={() => {
+                                const currentValue =
+                                  formData.interval?.[selectedIntervalUnit];
+                                setSelectedIntervalUnit(unit);
+                                setFormData((prev) => ({
+                                  ...prev,
+                                  interval: {
+                                    [unit]: currentValue,
+                                  },
+                                }));
+                                setShowUnitDropdown(false);
+                              }}
+                            >
+                              <Text style={styles.dropdownItemText}>
+                                {unit}
+                              </Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      )}
+                    </View>
+                  )}
+
+                  {formData.type === 'medication' && (
+                    <View style={styles.formGroup}>
+                      <Text style={styles.formLabel}>Dosage</Text>
+                      <TextInput
+                        style={styles.formInput}
+                        value={formData.dosage}
+                        onChangeText={(text) =>
+                          setFormData((prev) => ({ ...prev, dosage: text }))
+                        }
+                        placeholder="e.g., 2 tablets, 5ml"
+                      />
+                    </View>
+                  )}
+
+                  {formData.type === 'exercise' && (
+                    <View style={styles.formGroup}>
+                      <Text style={styles.formLabel}>Duration</Text>
+                      <TextInput
+                        style={styles.formInput}
+                        value={formData.duration}
+                        onChangeText={(text) =>
+                          setFormData((prev) => ({ ...prev, duration: text }))
+                        }
+                        placeholder="e.g., 30 min, 1 hour"
+                      />
+                    </View>
+                  )}
+
+                  <View style={styles.formGroup}>
+                    <Text style={styles.formLabel}>Description (Optional)</Text>
+                    <TextInput
+                      style={[styles.formInput, styles.textArea]}
+                      value={formData.description}
+                      onChangeText={(text) =>
+                        setFormData((prev) => ({ ...prev, description: text }))
+                      }
+                      placeholder="Additional notes..."
+                      multiline
+                      numberOfLines={3}
+                    />
                   </View>
-                )}
-              </View>
-            )}
 
-            {formData.type === 'medication' && (
-              <View style={styles.formGroup}>
-                <Text style={styles.formLabel}>Dosage</Text>
-                <TextInput
-                  style={styles.formInput}
-                  value={formData.dosage}
-                  onChangeText={(text) =>
-                    setFormData((prev) => ({ ...prev, dosage: text }))
-                  }
-                  placeholder="e.g., 2 tablets, 5ml"
-                />
-              </View>
-            )}
+                  <View style={styles.formGroup}>
+                    <Text style={styles.formLabel}>
+                      {formData.type === 'medication'
+                        ? 'Medication Info URL'
+                        : 'Exercise Info Link'}
+                    </Text>
+                    <TextInput
+                      style={styles.formInput}
+                      value={formData.mediaLink}
+                      onChangeText={(text) =>
+                        setFormData((prev) => ({ ...prev, mediaLink: text }))
+                      }
+                      placeholder={'e.g., https://youtube.com/watch?v=xyz'}
+                    />
+                  </View>
 
-            {formData.type === 'exercise' && (
-              <View style={styles.formGroup}>
-                <Text style={styles.formLabel}>Duration</Text>
-                <TextInput
-                  style={styles.formInput}
-                  value={formData.duration}
-                  onChangeText={(text) =>
-                    setFormData((prev) => ({ ...prev, duration: text }))
-                  }
-                  placeholder="e.g., 30 min, 1 hour"
-                />
-              </View>
-            )}
+                  <View style={styles.formGroup}>
+                    <Text style={styles.formLabel}>Images</Text>
+                    <View style={{ flexDirection: 'row', gap: 12 }}>
+                      <TouchableOpacity
+                        style={styles.typeButton}
+                        onPress={() => pickImage(handleImagesAdded)}
+                      >
+                        <Text style={styles.typeButtonText}>Use Camera</Text>
+                      </TouchableOpacity>
 
-            <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Description (Optional)</Text>
-              <TextInput
-                style={[styles.formInput, styles.textArea]}
-                value={formData.description}
-                onChangeText={(text) =>
-                  setFormData((prev) => ({ ...prev, description: text }))
-                }
-                placeholder="Additional notes..."
-                multiline
-                numberOfLines={3}
-              />
-            </View>
-          </ScrollView>
+                      <TouchableOpacity
+                        style={styles.typeButton}
+                        onPress={() => pickImage(handleImagesAdded)}
+                      >
+                        <Text style={styles.typeButtonText}>
+                          Pick from Gallery
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                    {imagesAddedFeedback && (
+                      <Text
+                        style={{
+                          color: '#2563EB',
+                          marginTop: 8,
+                          fontSize: 16,
+                          textAlign: 'center',
+                          fontWeight: '600',
+                        }}
+                      >
+                        Images added!
+                      </Text>
+                    )}
+
+                    {loadingImages && (
+                      <ActivityIndicator
+                        size="small"
+                        color="#2563EB"
+                        style={{ marginTop: 8 }}
+                      />
+                    )}
+                  </View>
+                </ScrollView>
+              </KeyboardAvoidingView>
+            </SafeAreaView>
+          </Modal>
+          <ImageViewing
+            images={selectedImages.map((uri) => ({ uri }))}
+            imageIndex={imageIndex}
+            visible={visible}
+            onRequestClose={() => setVisible(false)}
+            swipeToCloseEnabled
+          />
         </SafeAreaView>
-      </Modal>
-    </SafeAreaView>
+      </TouchableWithoutFeedback>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -1180,6 +1450,7 @@ const styles = StyleSheet.create({
   },
   reminderMeta: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     gap: 4,
   },
@@ -1201,6 +1472,13 @@ const styles = StyleSheet.create({
   reminderActions: {
     alignItems: 'center',
   },
+  reminderActionsRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 12,
+  },
   completeButton: {
     width: 32,
     height: 32,
@@ -1220,8 +1498,9 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   actionButtons: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
+    flexDirection: 'column',
+    justifyContent: 'left-align',
+    alignItems: 'flex-start',
     gap: 8,
     marginTop: 8,
     paddingTop: 8,
@@ -1376,5 +1655,30 @@ const styles = StyleSheet.create({
   dropdownItemText: {
     fontSize: 16,
     color: '#1E293B',
+  },
+  toggleButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#F8FAFC',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  divider: {
+    height: 1,
+    backgroundColor: '#E2E8F0',
+    marginVertical: 8,
+  },
+  extraInfo: {
+    marginLeft: 52, // aligns with text under icon
+    marginTop: 4,
+    gap: 4, // space between each line
+  },
+
+  linkText: {
+    color: '#2563EB',
+    textDecorationLine: 'underline',
+    fontSize: 13,
+    fontFamily: 'Inter-Regular',
   },
 });
