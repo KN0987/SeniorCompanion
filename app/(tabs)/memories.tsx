@@ -146,7 +146,7 @@ export default function MemoriesScreen() {
      return sound;
    } catch (error) {
      console.error('Error loading background music:', error);
-     // Don't show alert for audio errors, just log them
+     // log the error
      console.log('Audio playback will be disabled');
      return null;
    }
@@ -252,7 +252,7 @@ export default function MemoriesScreen() {
          onPress: () => startPresentation()
        },
        ...categoryOptions.map(category => ({
-         text: `${category} Only`,
+         text: `${category} Memos`,
          onPress: () => startPresentation(category)
        })),
        {
