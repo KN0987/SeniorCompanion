@@ -32,6 +32,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { format } from 'date-fns';
 import * as Notifications from 'expo-notifications';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import * as ImagePicker from 'expo-image-picker';
 
 interface Interval {
   minutes?: number;
@@ -58,6 +59,7 @@ interface Reminder {
   repeatMode: 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly';
   interval?: Interval;
   mediaLink?: string;
+  mediaImage?: string[];
 }
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -84,6 +86,7 @@ export default function RemindersScreen() {
     repeatMode: 'none' as 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly',
     interval: {} as Interval,
     mediaLink: '',
+    mediaImage: [] as string[],
   });
 
   const repeatOptions = [
@@ -168,6 +171,7 @@ export default function RemindersScreen() {
       repeatMode: 'none',
       interval: {},
       mediaLink: '',
+      mediaImage: [],
     });
     setShowModal(true);
   };
@@ -186,6 +190,7 @@ export default function RemindersScreen() {
       repeatMode: reminder.repeatMode || 'none',
       interval: reminder.interval || {},
       mediaLink: reminder.mediaLink || '',
+      mediaImage: reminder.mediaImage || [],
     });
     setShowModal(true);
   };
@@ -231,6 +236,7 @@ export default function RemindersScreen() {
           : undefined,
       repeatMode: formData.repeatMode,
       mediaLink: formData.mediaLink,
+      mediaImage: formData.mediaImage,
     };
 
     const notificationIds = await scheduleReminderNotification(newReminder);
@@ -517,6 +523,32 @@ export default function RemindersScreen() {
     }
   }
 
+  const pickImage = async (
+    fromCamera: boolean,
+    onImagesSelected: (uris: string[]) => void
+  ) => {
+    let result;
+    if (fromCamera) {
+      result = await ImagePicker.launchCameraAsync({
+        allowsMultipleSelection: false,
+        quality: 0.8,
+      });
+    } else {
+      result = await ImagePicker.launchImageLibraryAsync({
+        allowsMultipleSelection: true,
+        quality: 0.8,
+        selectionLimit: 5,
+      });
+    }
+
+    if (!result.canceled) {
+      const uris = fromCamera
+        ? [result.assets[0].uri]
+        : result.assets.map((asset) => asset.uri);
+      onImagesSelected(uris);
+    }
+  };
+
   return (
     <KeyboardAvoidingView
       style={{ flex: 1 }}
@@ -618,32 +650,39 @@ export default function RemindersScreen() {
                     )}
                     {reminder.mediaLink && (
                       <View style={{ marginTop: 8 }}>
-                        {reminder.type === 'medication' ? (
-                          <Image
-                            source={{ uri: reminder.mediaLink }}
-                            style={{
-                              width: '100%',
-                              height: 150,
-                              borderRadius: 8,
-                            }}
-                            resizeMode="cover"
-                          />
-                        ) : (
-                          <Text
-                            style={{
-                              color: '#2563EB',
-                              textDecorationLine: 'underline',
-                            }}
-                            onPress={() => {
-                              if (reminder.mediaLink) {
-                                Linking.openURL(reminder.mediaLink);
-                              }
-                            }}
-                          >
-                            Watch Exercise Video
-                          </Text>
-                        )}
+                        <Text
+                          style={{
+                            color: '#2563EB',
+                            textDecorationLine: 'underline',
+                          }}
+                          onPress={() => {
+                            if (reminder.mediaLink) {
+                              Linking.openURL(reminder.mediaLink);
+                            }
+                          }}
+                        >
+                          {`${reminder.type
+                            .charAt(0)
+                            .toUpperCase()}${reminder.type.slice(1)} Link`}
+                        </Text>
                       </View>
+                    )}
+                    {reminder.mediaImage && reminder.mediaImage.length > 0 && (
+                      <TouchableOpacity
+                        onPress={() => {
+                          // TODO: Navigate to a screen/modal to view images (or expand in-place)
+                        }}
+                      >
+                        <Text
+                          style={{
+                            color: '#2563EB',
+                            textDecorationLine: 'underline',
+                            marginTop: 8,
+                          }}
+                        >
+                          Click here to view images
+                        </Text>
+                      </TouchableOpacity>
                     )}
                   </View>
                 ))
@@ -1144,8 +1183,8 @@ export default function RemindersScreen() {
                   <View style={styles.formGroup}>
                     <Text style={styles.formLabel}>
                       {formData.type === 'medication'
-                        ? 'Medication Image URL'
-                        : 'Exercise YouTube Link'}
+                        ? 'Medication Info URL'
+                        : 'Exercise Info Link'}
                     </Text>
                     <TextInput
                       style={styles.formInput}
@@ -1153,12 +1192,43 @@ export default function RemindersScreen() {
                       onChangeText={(text) =>
                         setFormData((prev) => ({ ...prev, mediaLink: text }))
                       }
-                      placeholder={
-                        formData.type === 'medication'
-                          ? 'e.g., https://example.com/image.jpg'
-                          : 'e.g., https://youtube.com/watch?v=xyz'
-                      }
+                      placeholder={'e.g., https://youtube.com/watch?v=xyz'}
                     />
+                  </View>
+
+                  <View style={styles.formGroup}>
+                    <Text style={styles.formLabel}>Images</Text>
+                    <View style={{ flexDirection: 'row', gap: 12 }}>
+                      <TouchableOpacity
+                        style={styles.typeButton}
+                        onPress={() =>
+                          pickImage(true, (uris) =>
+                            setFormData((prev) => ({
+                              ...prev,
+                              media: [...(prev.mediaImage || []), ...uris],
+                            }))
+                          )
+                        }
+                      >
+                        <Text style={styles.typeButtonText}>Use Camera</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={styles.typeButton}
+                        onPress={() =>
+                          pickImage(false, (uris) =>
+                            setFormData((prev) => ({
+                              ...prev,
+                              media: [...(prev.mediaImage || []), ...uris],
+                            }))
+                          )
+                        }
+                      >
+                        <Text style={styles.typeButtonText}>
+                          Pick from Gallery
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
                 </ScrollView>
               </KeyboardAvoidingView>
