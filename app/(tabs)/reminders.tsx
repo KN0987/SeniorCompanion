@@ -526,13 +526,40 @@ export default function RemindersScreen() {
     }
   }
 
-  const pickImage = async (callback) => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsMultipleSelection: true,
-      quality: 0.5,
-      base64: false,
-    });
+  useEffect(() => {
+    (async () => {
+      const mediaStatus =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
+      const cameraStatus = await ImagePicker.requestCameraPermissionsAsync();
+      if (
+        mediaStatus.status !== 'granted' ||
+        cameraStatus.status !== 'granted'
+      ) {
+        Alert.alert(
+          'Permissions Required',
+          'Camera and media permissions are needed to select images.'
+        );
+      }
+    })();
+  }, []);
+
+  const pickImage = async (
+    useCamera = false,
+    onFinish?: (uris: string[]) => void
+  ) => {
+    let result;
+    if (useCamera) {
+      result = await ImagePicker.launchCameraAsync({
+        allowsMultipleSelection: false,
+        quality: 0.8,
+      });
+    } else {
+      result = await ImagePicker.launchImageLibraryAsync({
+        allowsMultipleSelection: true,
+        quality: 0.8,
+        selectionLimit: 5,
+      });
+    }
 
     if (!result.canceled) {
       setLoadingImages(true);
@@ -548,14 +575,12 @@ export default function RemindersScreen() {
           compressedUris.push(compressed.uri);
         }
 
-        if (callback) {
-          callback(compressedUris);
-        } else {
-          setFormData((prev) => ({
-            ...prev,
-            mediaImage: [...(prev.mediaImage || []), ...compressedUris],
-          }));
-        }
+        setFormData((prev) => ({
+          ...prev,
+          mediaImage: [...(prev.mediaImage || []), ...compressedUris],
+        }));
+
+        if (onFinish) onFinish(compressedUris);
       } catch (err) {
         console.error('Image compression failed:', err);
       } finally {
@@ -564,14 +589,20 @@ export default function RemindersScreen() {
     }
   };
 
-  const handleImagesAdded = (uris) => {
-    setFormData((prev) => ({
-      ...prev,
-      mediaImage: [...(prev.mediaImage || []), ...uris],
-    }));
-    setImagesAddedFeedback(true);
+  const handleImagesAdded = (newUris: string[]) => {
+    setFormData((prev) => {
+      const existingUris = new Set(prev.mediaImage || []);
+      const uniqueNewUris = newUris.filter((uri) => !existingUris.has(uri));
+      return {
+        ...prev,
+        mediaImage: [...(prev.mediaImage || []), ...uniqueNewUris],
+      };
+    });
 
-    setTimeout(() => setImagesAddedFeedback(false), 2000);
+    if (newUris.length > 0) {
+      setImagesAddedFeedback(true);
+      setTimeout(() => setImagesAddedFeedback(false), 2000);
+    }
   };
 
   return (
@@ -1287,14 +1318,14 @@ export default function RemindersScreen() {
                     <View style={{ flexDirection: 'row', gap: 12 }}>
                       <TouchableOpacity
                         style={styles.typeButton}
-                        onPress={() => pickImage(handleImagesAdded)}
+                        onPress={() => pickImage(true, handleImagesAdded)} // useCamera = true
                       >
                         <Text style={styles.typeButtonText}>Use Camera</Text>
                       </TouchableOpacity>
 
                       <TouchableOpacity
                         style={styles.typeButton}
-                        onPress={() => pickImage(handleImagesAdded)}
+                        onPress={() => pickImage(false, handleImagesAdded)} // useCamera = false
                       >
                         <Text style={styles.typeButtonText}>
                           Pick from Gallery
