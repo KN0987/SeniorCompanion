@@ -1,5 +1,4 @@
 # Main dependencies
-@google/generative-ai  # Google's Generative AI package for Gemini integration
 dotenv                 # For loading environment variables from .env file
 
 # Development dependencies
