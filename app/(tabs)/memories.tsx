@@ -463,27 +463,40 @@ export default function MemoriesScreen() {
    }, 3000); // 3 seconds
  };
 
-
  const nextPresentationSlide = () => {
    if (presentationTimerRef.current) {
      clearTimeout(presentationTimerRef.current);
+     presentationTimerRef.current = null;
    }
 
    setCurrentPresentationIndex(prevIndex => {
      const nextIndex = prevIndex + 1;
-    
-     if (nextIndex >= presentationMemories.length) {
-       // End of presentation
-       endPresentation();
-       return prevIndex; // Don't change the index if ending
-     } else {
-       setSelectedMemory(presentationMemories[nextIndex]);
-       // Start the next timer
-       startPresentationTimer();
-       return nextIndex;
-     }
+     return nextIndex;
    });
  };
+
+ // Add useEffect to handle presentation index changes
+ useEffect(() => {
+   if (presentationMode && presentationMemories.length > 0) {
+     if (currentPresentationIndex >= presentationMemories.length) {
+       // End of presentation
+       endPresentation();
+     } else {
+       // Update selected memory and continue presentation
+       setSelectedMemory(presentationMemories[currentPresentationIndex]);
+       
+       // Only start timer if not at the end
+       if (currentPresentationIndex < presentationMemories.length - 1) {
+         startPresentationTimer();
+       } else {
+         // This is the last image, set timer to end presentation
+         presentationTimerRef.current = setTimeout(() => {
+           endPresentation();
+         }, 3000);
+       }
+     }
+   }
+ }, [currentPresentationIndex, presentationMode, presentationMemories]);
 
 
  const endPresentation = async () => {
@@ -497,8 +510,6 @@ export default function MemoriesScreen() {
   
    // Stop background music
    await stopBackgroundMusic();
-   
-   Alert.alert('Presentation Complete', 'You\'ve viewed all your memories!');
  };
 
 
