@@ -40,8 +40,9 @@ interface Reminder {
   duration?: string;
   completed?: boolean;
   notificationIds?: string[];
-  repeatMode?: 'weekly' | 'interval';
-  intervalMinutes?: number; // For repeatMode === 'interval'
+  notificationMode?: 'specificDays' | 'interval';
+  repeatMode: 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly';
+  intervalMinutes?: number; // For notificationMode === 'interval'
   repeat?: boolean; // Whether to repeat on scheduled days
 }
 
@@ -51,6 +52,7 @@ export default function RemindersScreen() {
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [editingReminder, setEditingReminder] = useState<Reminder | null>(null);
+  const [showRepeatDropdown, setShowRepeatDropdown] = useState(false);
   const [formData, setFormData] = useState({
     title: '',
     type: 'medication' as 'medication' | 'exercise',
@@ -59,13 +61,21 @@ export default function RemindersScreen() {
     description: '',
     dosage: '',
     duration: '',
-    repeatMode: 'weekly' as 'weekly' | 'interval',
+    notificationMode: 'specificDays' as 'specificDays' | 'interval',
+    repeatMode: 'none' as 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly',
     intervalMinutes: undefined as number | undefined,
-    repeat: true,
   });
 
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [pickerTime, setPickerTime] = useState(new Date());
+
+  const repeatOptions = [
+    { label: 'None', value: 'none' },
+    { label: 'Daily', value: 'daily' },
+    { label: 'Weekly', value: 'weekly' },
+    { label: 'Monthly', value: 'monthly' },
+    { label: 'Yearly', value: 'yearly' },
+  ];
 
   useEffect(() => {
     loadReminders();
@@ -89,6 +99,9 @@ export default function RemindersScreen() {
             description: 'Take with breakfast',
             dosage: '2 tablets',
             completed: false,
+            repeatMode: 'none',
+            notificationMode: 'specificDays',
+            intervalMinutes: undefined,
           },
           {
             id: '2',
@@ -100,6 +113,9 @@ export default function RemindersScreen() {
             description: '30 minutes walk',
             duration: '30 min',
             completed: false,
+            repeatMode: 'none',
+            notificationMode: 'specificDays',
+            intervalMinutes: undefined,
           },
         ];
         setReminders(sampleReminders);
@@ -131,8 +147,8 @@ export default function RemindersScreen() {
       description: '',
       dosage: '',
       duration: '',
-      repeatMode: 'weekly',
-      repeat: true,
+      notificationMode: 'specificDays',
+      repeatMode: 'none',
       intervalMinutes: undefined,
     });
     setShowModal(true);
@@ -148,8 +164,8 @@ export default function RemindersScreen() {
       description: reminder.description || '',
       dosage: reminder.dosage || '',
       duration: reminder.duration || '',
-      repeatMode: reminder.repeatMode || 'weekly',
-      repeat: reminder.repeat ?? true,
+      notificationMode: reminder.notificationMode || 'specificDays',
+      repeatMode: reminder.repeatMode || 'none',
       intervalMinutes: reminder.intervalMinutes ?? 240,
     });
     setShowModal(true);
@@ -158,8 +174,10 @@ export default function RemindersScreen() {
   const saveReminder = async () => {
     if (
       !formData.title.trim() ||
-      (formData.repeatMode === 'weekly' && formData.days.length === 0) ||
-      (formData.repeatMode === 'interval' && !Number(formData.intervalMinutes))
+      (formData.notificationMode === 'specificDays' &&
+        formData.days.length === 0) ||
+      (formData.notificationMode === 'interval' &&
+        !Number(formData.intervalMinutes))
     ) {
       if (Platform.OS === 'web') {
         window.alert('Please fill in all required fields');
@@ -184,12 +202,12 @@ export default function RemindersScreen() {
       dosage: formData.type === 'medication' ? formData.dosage : undefined,
       duration: formData.type === 'exercise' ? formData.duration : undefined,
       completed: false,
-      repeatMode: formData.repeatMode,
+      notificationMode: formData.notificationMode,
       intervalMinutes:
-        formData.repeatMode === 'interval'
+        formData.notificationMode === 'interval'
           ? formData.intervalMinutes
           : undefined,
-      repeat: formData.repeat,
+      repeatMode: formData.repeatMode,
     };
 
     const notificationIds = await scheduleReminderNotification(newReminder);
@@ -305,17 +323,17 @@ export default function RemindersScreen() {
     return reminders
       .filter((r) => {
         if (!r.isActive) return false;
-        if (r.repeatMode === 'weekly') {
+        if (r.notificationMode === 'specificDays') {
           return r.days.includes(today);
         }
-        if (r.repeatMode === 'interval') {
+        if (r.notificationMode === 'interval') {
           return true; // Always show interval reminders as "today"
         }
         return false;
       })
       .sort((a, b) => {
         const getMinutes = (r: Reminder) =>
-          r.repeatMode === 'interval' || !r.time
+          r.notificationMode === 'interval' || !r.time
             ? 0
             : timeStringToMinutes(r.time);
 
@@ -334,7 +352,7 @@ export default function RemindersScreen() {
     const notificationIds: string[] = [];
     const [hour, minute] = reminder.time.split(':').map(Number);
 
-    if (reminder.repeatMode === 'interval' && reminder.intervalMinutes) {
+    if (reminder.notificationMode === 'interval' && reminder.intervalMinutes) {
       const intervalId = await Notifications.scheduleNotificationAsync({
         content: {
           title: reminder.title,
@@ -351,15 +369,26 @@ export default function RemindersScreen() {
     } else {
       for (const day of reminder.days) {
         const expoWeekday = getExpoWeekday(day);
+        let trigger;
+        if (reminder.repeatMode === 'none') {
+          trigger = getNextTriggerDate(day, hour, minute);
+        } else {
+          const triggerTypeMap = {
+            daily: Notifications.SchedulableTriggerInputTypes.DAILY,
+            weekly: Notifications.SchedulableTriggerInputTypes.WEEKLY,
+            monthly: Notifications.SchedulableTriggerInputTypes.MONTHLY,
+            yearly: Notifications.SchedulableTriggerInputTypes.YEARLY,
+          };
 
-        const trigger = reminder.repeat
-          ? {
-              weekday: expoWeekday,
-              hour,
-              minute,
-              type: Notifications.SchedulableTriggerInputTypes.WEEKLY,
-            }
-          : getNextTriggerDate(day, hour, minute);
+          trigger = {
+            weekday: expoWeekday,
+            hour,
+            minute,
+            type:
+              triggerTypeMap[reminder.repeatMode] ||
+              Notifications.SchedulableTriggerInputTypes.WEEKLY,
+          };
+        }
 
         const id = await Notifications.scheduleNotificationAsync({
           content: {
@@ -476,7 +505,7 @@ export default function RemindersScreen() {
                     <View style={styles.reminderMeta}>
                       <Clock size={14} color="#64748B" />
                       <Text style={styles.reminderTime}>
-                        {reminder.repeatMode === 'interval' &&
+                        {reminder.notificationMode === 'interval' &&
                         reminder.intervalMinutes
                           ? `Every ${reminder.intervalMinutes} min`
                           : reminder.time}
@@ -558,12 +587,12 @@ export default function RemindersScreen() {
                     <View style={styles.reminderMeta}>
                       <Clock size={14} color="#64748B" />
                       <Text style={styles.reminderTime}>
-                        {reminder.repeatMode === 'interval' &&
+                        {reminder.notificationMode === 'interval' &&
                         reminder.intervalMinutes
                           ? `Every ${reminder.intervalMinutes} min`
                           : reminder.time}
                       </Text>
-                      {reminder.repeatMode === 'weekly' && (
+                      {reminder.notificationMode === 'specificDays' && (
                         <Text style={styles.reminderDays}>
                           •{' '}
                           {DAYS.filter((d) => reminder.days.includes(d)).join(
@@ -687,21 +716,25 @@ export default function RemindersScreen() {
 
             {/* Repeat Mode Picker */}
             <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Repeat Mode</Text>
+              <Text style={styles.formLabel}>Notifications Mode</Text>
               <View style={{ flexDirection: 'row', gap: 12 }}>
                 <TouchableOpacity
                   style={[
                     styles.typeButton,
-                    formData.repeatMode === 'weekly' && styles.typeButtonActive,
+                    formData.notificationMode === 'specificDays' &&
+                      styles.typeButtonActive,
                   ]}
                   onPress={() =>
-                    setFormData((prev) => ({ ...prev, repeatMode: 'weekly' }))
+                    setFormData((prev) => ({
+                      ...prev,
+                      notificationMode: 'specificDays',
+                    }))
                   }
                 >
                   <Text
                     style={[
                       styles.typeButtonText,
-                      formData.repeatMode === 'weekly' &&
+                      formData.notificationMode === 'specificDays' &&
                         styles.typeButtonTextActive,
                     ]}
                   >
@@ -712,17 +745,20 @@ export default function RemindersScreen() {
                 <TouchableOpacity
                   style={[
                     styles.typeButton,
-                    formData.repeatMode === 'interval' &&
+                    formData.notificationMode === 'interval' &&
                       styles.typeButtonActive,
                   ]}
                   onPress={() =>
-                    setFormData((prev) => ({ ...prev, repeatMode: 'interval' }))
+                    setFormData((prev) => ({
+                      ...prev,
+                      notificationMode: 'interval',
+                    }))
                   }
                 >
                   <Text
                     style={[
                       styles.typeButtonText,
-                      formData.repeatMode === 'interval' &&
+                      formData.notificationMode === 'interval' &&
                         styles.typeButtonTextActive,
                     ]}
                   >
@@ -732,7 +768,7 @@ export default function RemindersScreen() {
               </View>
             </View>
 
-            {formData.repeatMode === 'weekly' && (
+            {formData.notificationMode === 'specificDays' && (
               <>
                 <View style={styles.formGroup}>
                   <Text style={styles.formLabel}>Time</Text>
@@ -792,18 +828,54 @@ export default function RemindersScreen() {
                 </View>
 
                 <View style={styles.formGroup}>
-                  <Text style={styles.formLabel}>Repeat Weekly?</Text>
-                  <Switch
-                    value={formData.repeat}
-                    onValueChange={(val) =>
-                      setFormData((prev) => ({ ...prev, repeat: val }))
-                    }
-                  />
+                  <Text style={styles.formLabel}>Repeat Mode</Text>
+                  <TouchableOpacity
+                    onPress={() => setShowRepeatDropdown((prev) => !prev)}
+                    style={styles.dropdownButton}
+                  >
+                    <Text style={styles.dropdownButtonText}>
+                      {
+                        repeatOptions.find(
+                          (opt) => opt.value === formData.repeatMode
+                        )?.label
+                      }
+                    </Text>
+                  </TouchableOpacity>
+
+                  {showRepeatDropdown && (
+                    <View style={styles.dropdownList}>
+                      {repeatOptions.map((option) => (
+                        <TouchableOpacity
+                          key={option.value}
+                          style={styles.dropdownItem}
+                          onPress={() => {
+                            setFormData((prev) => ({
+                              ...prev,
+                              repeatMode:
+                                option.value as typeof formData.repeatMode,
+                            }));
+                            setShowRepeatDropdown(false);
+                          }}
+                        >
+                          <Text
+                            style={[
+                              styles.dropdownItemText,
+                              formData.repeatMode === option.value && {
+                                fontWeight: 'bold',
+                              },
+                            ]}
+                          >
+                            {option.label}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
                 </View>
               </>
             )}
 
-            {formData.repeatMode === 'interval' && (
+            {formData.notificationMode === 'interval' && (
               <View style={styles.formGroup}>
                 <Text style={styles.formLabel}>Repeat every (minutes)</Text>
                 <TextInput
@@ -1145,5 +1217,35 @@ const styles = StyleSheet.create({
   },
   dayButtonTextActive: {
     color: 'white',
+  },
+  dropdownButton: {
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    backgroundColor: 'white',
+  },
+  dropdownButtonText: {
+    fontSize: 16,
+    color: '#1E293B',
+  },
+
+  dropdownList: {
+    marginTop: 6,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    backgroundColor: '#F8FAFC',
+    overflow: 'hidden',
+  },
+
+  dropdownItem: {
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+  },
+
+  dropdownItemText: {
+    fontSize: 16,
+    color: '#1E293B',
   },
 });
