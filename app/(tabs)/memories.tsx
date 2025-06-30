@@ -465,39 +465,27 @@ export default function MemoriesScreen() {
  };
 
  const nextPresentationSlide = () => {
-   if (presentationTimerRef.current) {
-     clearTimeout(presentationTimerRef.current);
-     presentationTimerRef.current = null;
-   }
+  if (presentationTimerRef.current) {
+    clearTimeout(presentationTimerRef.current);
+    presentationTimerRef.current = null;
+  }
 
-   setCurrentPresentationIndex(prevIndex => {
-     const nextIndex = prevIndex + 1;
-     return nextIndex;
-   });
+  setCurrentPresentationIndex(prevIndex => {
+    const nextIndex = (prevIndex + 1) % presentationMemories.length;
+    return nextIndex;
+  });
  };
 
- // Add useEffect to handle presentation index changes
- useEffect(() => {
-   if (presentationMode && presentationMemories.length > 0) {
-     if (currentPresentationIndex >= presentationMemories.length) {
-       // End of presentation
-       endPresentation();
-     } else {
-       // Update selected memory and continue presentation
-       setSelectedMemory(presentationMemories[currentPresentationIndex]);
-       
-       // Only start timer if not at the end
-       if (currentPresentationIndex < presentationMemories.length - 1) {
-         startPresentationTimer();
-       } else {
-         // This is the last image, set timer to end presentation
-         presentationTimerRef.current = setTimeout(() => {
-           endPresentation();
-         }, 3000);
-       }
-     }
-   }
- }, [currentPresentationIndex, presentationMode, presentationMemories]);
+// Add useEffect to handle presentation index changes
+useEffect(() => {
+  if (presentationMode && presentationMemories.length > 0) {
+    // Update selected memory
+    setSelectedMemory(presentationMemories[currentPresentationIndex]);
+    
+    // Continue presentation timer for continuous loop
+    startPresentationTimer();
+  }
+}, [currentPresentationIndex, presentationMode, presentationMemories]);
 
 
  const endPresentation = async () => {
