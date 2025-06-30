@@ -33,6 +33,7 @@ import { format } from 'date-fns';
 import * as Notifications from 'expo-notifications';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as ImagePicker from 'expo-image-picker';
+import ImageViewing from 'react-native-image-viewing';
 
 interface Interval {
   minutes?: number;
@@ -74,6 +75,9 @@ export default function RemindersScreen() {
     useState<keyof Interval>('minutes');
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [pickerTime, setPickerTime] = useState(new Date());
+  const [visible, setVisible] = useState(false);
+  const [imageIndex, setImageIndex] = useState(0);
+  const [selectedImages, setSelectedImages] = useState<string[]>([]);
   const [formData, setFormData] = useState({
     title: '',
     type: 'medication' as 'medication' | 'exercise',
@@ -670,17 +674,19 @@ export default function RemindersScreen() {
                     {reminder.mediaImage && reminder.mediaImage.length > 0 && (
                       <TouchableOpacity
                         onPress={() => {
-                          // TODO: Navigate to a screen/modal to view images (or expand in-place)
+                          setSelectedImages(reminder.mediaImage ?? []);
+                          setImageIndex(0);
+                          setVisible(true);
                         }}
+                        style={{ marginTop: 8 }}
                       >
                         <Text
                           style={{
                             color: '#2563EB',
                             textDecorationLine: 'underline',
-                            marginTop: 8,
                           }}
                         >
-                          Click here to view images
+                          View Images ({reminder.mediaImage.length})
                         </Text>
                       </TouchableOpacity>
                     )}
@@ -1234,6 +1240,13 @@ export default function RemindersScreen() {
               </KeyboardAvoidingView>
             </SafeAreaView>
           </Modal>
+          <ImageViewing
+            images={selectedImages.map((uri) => ({ uri }))}
+            imageIndex={imageIndex}
+            visible={visible}
+            onRequestClose={() => setVisible(false)}
+            swipeToCloseEnabled
+          />
         </SafeAreaView>
       </TouchableWithoutFeedback>
     </KeyboardAvoidingView>
