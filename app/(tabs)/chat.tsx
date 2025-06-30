@@ -7,274 +7,276 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
-  Alert
+  Alert,
+  Keyboard,
+  Animated
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useState, useEffect, useRef } from 'react';
-import { Send, Bot, User, Heart, Smile, Frown, Meh } from 'lucide-react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { format } from 'date-fns';
+import { useRef, useEffect, useState } from 'react';
+import { Send, Bot, User, Trash2 } from 'lucide-react-native';
 
-interface Message {
-  id: string;
-  text: string;
-  isBot: boolean;
-  timestamp: string;
-  mood?: string;
-}
+// Import our custom hooks and components
+import { useChatbot } from '../../hooks/useChatbot';
+import chatbotConfig from '../../config/chatbotConfig';
+import { formatTimestamp } from '../../utils/chatUtils';
+import { 
+  useAccessibilitySettings, 
+  getFontSize, 
+  getLineHeight
+} from '../../hooks/useAccessibilitySettings';
+import AccessibilityControls from '../../components/AccessibilityControls';
 
-const moodResponses = {
-  happy: [
-    "That's wonderful to hear! 😊 What's making you feel so good today?",
-    "I love that positive energy! Care to share what's bringing you joy?",
-    "Fantastic! Your happiness is contagious. What's been the highlight of your day?"
-  ],
-  sad: [
-    "I'm sorry you're feeling down. 💙 Would you like to talk about what's on your mind?",
-    "It's okay to feel sad sometimes. I'm here to listen. What's troubling you?",
-    "Thank you for sharing that with me. Is there anything specific that's making you feel this way?"
-  ],
-  neutral: [
-    "Thanks for checking in! How has your day been so far?",
-    "I appreciate you sharing. Is there anything on your mind today?",
-    "How are things going for you lately? I'm here if you want to chat."
-  ],
-  anxious: [
-    "I understand feeling anxious can be overwhelming. 🫂 Take a deep breath with me. What's causing you stress?",
-    "Anxiety is tough, but you're not alone. Let's work through this together. What's worrying you?",
-    "I'm here for you. When you're ready, tell me what's making you feel anxious."
-  ]
-};
-
-const botResponses = [
-  "I understand. How long have you been feeling this way?",
-  "That sounds challenging. Have you been taking care of yourself?",
-  "Thank you for sharing that with me. What helps you feel better usually?",
-  "I'm here to listen. Is there anything specific you'd like to talk about?",
-  "How has your sleep been lately? That can affect how we feel.",
-  "Have you been able to do any activities you enjoy recently?",
-  "Remember, it's important to be gentle with yourself. What brings you comfort?",
-  "I appreciate your openness. How are your energy levels today?",
-];
-
-export default function ChatScreen() {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [inputText, setInputText] = useState('');
-  const [isTyping, setIsTyping] = useState(false);
-  const scrollViewRef = useRef<ScrollView>(null);
+// Simple animated dots for typing indicator
+function AnimatedDots() {
+  const dot1 = new Animated.Value(0);
+  const dot2 = new Animated.Value(0);
+  const dot3 = new Animated.Value(0);
 
   useEffect(() => {
-    loadMessages();
-    // Send initial greeting
-    const initialMessage: Message = {
-      id: Date.now().toString(),
-      text: "Hello! I'm your wellness companion. How are you feeling today? 💙",
-      isBot: true,
-      timestamp: new Date().toISOString(),
+    const animate = () => {
+      const duration = 600;
+      
+      Animated.sequence([
+        Animated.timing(dot1, { toValue: -8, duration: duration / 2, useNativeDriver: true }),
+        Animated.timing(dot1, { toValue: 0, duration: duration / 2, useNativeDriver: true })
+      ]).start();
+      
+      setTimeout(() => {
+        Animated.sequence([
+          Animated.timing(dot2, { toValue: -8, duration: duration / 2, useNativeDriver: true }),
+          Animated.timing(dot2, { toValue: 0, duration: duration / 2, useNativeDriver: true })
+        ]).start();
+      }, 200);
+      
+      setTimeout(() => {
+        Animated.sequence([
+          Animated.timing(dot3, { toValue: -8, duration: duration / 2, useNativeDriver: true }),
+          Animated.timing(dot3, { toValue: 0, duration: duration / 2, useNativeDriver: true })
+        ]).start();
+      }, 400);
     };
-    setMessages([initialMessage]);
+
+    animate();
+    const interval = setInterval(animate, 1800);
+    
+    return () => clearInterval(interval);
   }, []);
 
-  const loadMessages = async () => {
-    try {
-      const storedMessages = await AsyncStorage.getItem('chatMessages');
-      if (storedMessages) {
-        setMessages(JSON.parse(storedMessages));
-      }
-    } catch (error) {
-      console.error('Error loading messages:', error);
-    }
-  };
+  return (
+    <View style={styles.dotsContainer}>
+      <Animated.View style={[styles.dot, { transform: [{ translateY: dot1 }] }]} />
+      <Animated.View style={[styles.dot, { transform: [{ translateY: dot2 }] }]} />
+      <Animated.View style={[styles.dot, { transform: [{ translateY: dot3 }] }]} />
+    </View>
+  );
+}
 
-  const saveMessages = async (newMessages: Message[]) => {
-    try {
-      await AsyncStorage.setItem('chatMessages', JSON.stringify(newMessages));
-    } catch (error) {
-      console.error('Error saving messages:', error);
-    }
-  };
+function ChatScreen() {
+  const scrollViewRef = useRef<ScrollView>(null);
+  const textInputRef = useRef<TextInput>(null);
+  
+  // Use our custom hooks
+  const { 
+    messages, 
+    inputText, 
+    isTyping, 
+    isInitialized,
+    setInputText, 
+    sendMessage: originalSendMessage, 
+    clearChat
+  } = useChatbot(chatbotConfig.useGemini);
 
-  const sendMessage = async () => {
-    if (!inputText.trim()) return;
+  const {
+    fontSize,
+    highContrast,
+    setFontSize,
+    setHighContrast
+  } = useAccessibilitySettings();
 
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      text: inputText.trim(),
-      isBot: false,
-      timestamp: new Date().toISOString(),
-    };
-
-    const updatedMessages = [...messages, userMessage];
-    setMessages(updatedMessages);
-    setInputText('');
-    setIsTyping(true);
-
-    // Simulate bot response after delay
-    setTimeout(() => {
-      const botResponse = generateBotResponse(inputText);
-      const botMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        text: botResponse,
-        isBot: true,
-        timestamp: new Date().toISOString(),
-      };
-
-      const finalMessages = [...updatedMessages, botMessage];
-      setMessages(finalMessages);
-      saveMessages(finalMessages);
-      setIsTyping(false);
-    }, 1000 + Math.random() * 2000);
-
-    // Scroll to bottom
+  // Scroll to bottom when messages change
+  useEffect(() => {
     setTimeout(() => {
       scrollViewRef.current?.scrollToEnd({ animated: true });
     }, 100);
+  }, [messages]);
+
+  // Confirm chat history deletion
+  const handleClearChat = () => {
+    Alert.alert(
+      'Clear Chat History',
+      'Are you sure you want to clear all chat messages?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Clear', style: 'destructive', onPress: clearChat }
+      ]
+    );
   };
 
-  const generateBotResponse = (userInput: string): string => {
-    const input = userInput.toLowerCase();
-    
-    // Check for mood indicators
-    if (input.includes('happy') || input.includes('good') || input.includes('great') || input.includes('excited')) {
-      return moodResponses.happy[Math.floor(Math.random() * moodResponses.happy.length)];
-    }
-    
-    if (input.includes('sad') || input.includes('down') || input.includes('depressed') || input.includes('upset')) {
-      return moodResponses.sad[Math.floor(Math.random() * moodResponses.sad.length)];
-    }
-    
-    if (input.includes('anxious') || input.includes('worried') || input.includes('stressed') || input.includes('nervous')) {
-      return moodResponses.anxious[Math.floor(Math.random() * moodResponses.anxious.length)];
-    }
-
-    // Default responses
-    return botResponses[Math.floor(Math.random() * botResponses.length)];
+  // Toggle high contrast mode
+  const toggleHighContrast = () => {
+    setHighContrast(!highContrast);
   };
 
-  const selectMood = (mood: string) => {
-    const moodMessage = `I'm feeling ${mood} today.`;
-    setInputText(moodMessage);
+  // Get dynamic styles based on accessibility settings
+  const getMessageTextStyle = (isBot: boolean) => {
+    const baseStyle = isBot ? styles.botMessageText : styles.userMessageText;
+    const contrastStyle = highContrast ? (isBot ? styles.highContrastBotText : styles.highContrastUserText) : {};
+    
+    return [
+      baseStyle,
+      contrastStyle,
+      {
+        fontSize: getFontSize(fontSize),
+        lineHeight: getLineHeight(fontSize),
+      }
+    ];
+  };
+
+  // Get bubble style based on accessibility settings
+  const getMessageBubbleStyle = (isBot: boolean) => {
+    const baseStyle = isBot ? styles.botMessage : styles.userMessage;
+    const contrastStyle = highContrast ? (isBot ? styles.highContrastBotBubble : styles.highContrastUserBubble) : {};
+    
+    return [baseStyle, contrastStyle];
+  };
+
+  // Wrapper function to dismiss keyboard after sending message
+  const sendMessage = async () => {
+    if (inputText.trim()) {
+      originalSendMessage();
+      textInputRef.current?.blur();
+      Keyboard.dismiss();
+    }
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <View style={styles.headerInfo}>
-          <Bot size={24} color="#2563EB" />
-          <View>
-            <Text style={styles.headerTitle}>Wellness Chat</Text>
-            <Text style={styles.headerSubtitle}>Your personal companion</Text>
-          </View>
-        </View>
-        <View style={styles.statusIndicator} />
-      </View>
-
-      <ScrollView 
-        ref={scrollViewRef}
-        style={styles.messagesContainer}
-        showsVerticalScrollIndicator={false}
-        onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
-      >
-        {messages.map((message) => (
-          <View
-            key={message.id}
-            style={[
-              styles.messageWrapper,
-              message.isBot ? styles.botMessageWrapper : styles.userMessageWrapper,
-            ]}
-          >
-            <View style={styles.messageHeader}>
-              {message.isBot ? (
-                <Bot size={20} color="#2563EB" />
-              ) : (
-                <User size={20} color="#059669" />
-              )}
-              <Text style={styles.messageTime}>
-                {format(new Date(message.timestamp), 'HH:mm')}
+    <View style={styles.fullContainer}>
+      <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+        <View style={styles.header}>
+          <View style={styles.headerInfo}>
+            <Bot size={24} color={highContrast ? '#1E40AF' : '#2563EB'} />
+            <View>
+              <Text style={[styles.headerTitle, highContrast && styles.highContrastText]}>
+                Wellness Chat
               </Text>
+              <Text style={styles.headerSubtitle}>Your personal companion</Text>
             </View>
+          </View>
+          <TouchableOpacity 
+            style={styles.clearButton}
+            onPress={handleClearChat}
+          >
+            <Trash2 size={18} color="#64748B" />
+          </TouchableOpacity>
+        </View>
+
+        <ScrollView 
+          // @ts-ignore
+          ref={scrollViewRef}
+          style={styles.messagesContainer}
+          showsVerticalScrollIndicator={false}
+          onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
+        >
+          {messages.map((message) => (
             <View
+              // @ts-ignore
+              key={message.id}
               style={[
-                styles.messageBubble,
-                message.isBot ? styles.botMessage : styles.userMessage,
+                styles.messageWrapper,
+                message.isBot ? styles.botMessageWrapper : styles.userMessageWrapper,
               ]}
             >
-              <Text
-                style={[
-                  styles.messageText,
-                  message.isBot ? styles.botMessageText : styles.userMessageText,
-                ]}
+              <View style={styles.messageHeader}>
+                {message.isBot ? (
+                  <Bot size={20} color={highContrast ? '#1E40AF' : '#2563EB'} />
+                ) : (
+                  <User size={20} color={highContrast ? '#065F46' : '#059669'} />
+                )}
+                <Text style={styles.messageTime}>
+                  {formatTimestamp(message.timestamp)}
+                </Text>
+              </View>
+              <View
+                style={getMessageBubbleStyle(message.isBot)}
               >
-                {message.text}
-              </Text>
+                <Text
+                  style={getMessageTextStyle(message.isBot)}
+                >
+                  {message.text}
+                </Text>
+              </View>
             </View>
-          </View>
-        ))}
-        
-        {isTyping && (
-          <View style={[styles.messageWrapper, styles.botMessageWrapper]}>
-            <View style={styles.messageHeader}>
-              <Bot size={20} color="#2563EB" />
-              <Text style={styles.messageTime}>typing...</Text>
+          ))}
+          
+          {isTyping && (
+            <View style={[styles.messageWrapper, styles.botMessageWrapper]}>
+              <View style={styles.messageHeader}>
+                <Bot size={20} color={highContrast ? '#1E40AF' : '#2563EB'} />
+                <Text style={styles.messageTime}>typing...</Text>
+              </View>
+              <View style={getMessageBubbleStyle(true)}>
+                <AnimatedDots />
+              </View>
             </View>
-            <View style={[styles.messageBubble, styles.botMessage]}>
-              <Text style={styles.typingText}>...</Text>
-            </View>
-          </View>
-        )}
-      </ScrollView>
+          )}
+          
+          {/* Add extra padding at the bottom */}
+          <View style={{ height: 20 }} />
+        </ScrollView>
 
-      {/* Quick Mood Selector */}
-      <View style={styles.moodSelector}>
-        <Text style={styles.moodTitle}>Quick mood check:</Text>
-        <View style={styles.moodButtons}>
-          <TouchableOpacity 
-            style={styles.moodButton} 
-            onPress={() => selectMood('happy')}
-          >
-            <Smile size={20} color="#059669" />
-            <Text style={styles.moodButtonText}>Happy</Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={styles.moodButton} 
-            onPress={() => selectMood('okay')}
-          >
-            <Meh size={20} color="#F59E0B" />
-            <Text style={styles.moodButtonText}>Okay</Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={styles.moodButton} 
-            onPress={() => selectMood('sad')}
-          >
-            <Frown size={20} color="#DC2626" />
-            <Text style={styles.moodButtonText}>Sad</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+        {/* Accessibility Controls */}
+        <AccessibilityControls 
+          fontSize={fontSize}
+          highContrast={highContrast}
+          onChangeFontSize={setFontSize}
+          onToggleHighContrast={toggleHighContrast}
+        />
 
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.inputContainer}
-      >
-        <View style={styles.inputWrapper}>
-          <TextInput
-            style={styles.textInput}
-            value={inputText}
-            onChangeText={setInputText}
-            placeholder="Share your thoughts..."
-            multiline
-            placeholderTextColor="#94A3B8"
-          />
-          <TouchableOpacity
-            style={[styles.sendButton, !inputText.trim() && styles.sendButtonDisabled]}
-            onPress={sendMessage}
-            disabled={!inputText.trim() || isTyping}
-          >
-            <Send size={20} color={inputText.trim() ? '#2563EB' : '#CBD5E1'} />
-          </TouchableOpacity>
-        </View>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'position' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? -110 : 0}
+          style={styles.inputContainer}
+        >
+          <View style={styles.inputWrapper}>
+            <TextInput
+              // @ts-ignore
+              ref={textInputRef}
+              style={[
+                styles.textInput, 
+                { fontSize: getFontSize(fontSize) },
+                highContrast && styles.highContrastInput
+              ]}
+              value={inputText}
+              onChangeText={setInputText}
+              placeholder="Enter here..."
+              multiline
+              placeholderTextColor={highContrast ? '#475569' : '#94A3B8'}
+              onSubmitEditing={sendMessage}
+              blurOnSubmit={false}
+              returnKeyType="send"
+            />
+            
+            <TouchableOpacity
+              style={[
+                styles.sendButton, 
+                !inputText.trim() && styles.sendButtonDisabled,
+                highContrast && inputText.trim() && styles.highContrastSendButton
+              ]}
+              onPress={sendMessage}
+              disabled={!inputText.trim() || isTyping || !isInitialized}
+            >
+              <Send 
+                size={20} 
+                color={inputText.trim() 
+                  ? (highContrast ? '#1E40AF' : '#2563EB') 
+                  : '#CBD5E1'
+                } 
+              />
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </View>
   );
 }
 
@@ -310,12 +312,6 @@ const styles = StyleSheet.create({
     color: '#64748B',
     fontFamily: 'Inter-Regular',
   },
-  statusIndicator: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#059669',
-  },
   messagesContainer: {
     flex: 1,
     paddingHorizontal: 20,
@@ -343,22 +339,25 @@ const styles = StyleSheet.create({
     color: '#94A3B8',
     fontFamily: 'Inter-Regular',
   },
-  messageBubble: {
+  botMessage: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 18,
+    borderBottomLeftRadius: 6,
     paddingHorizontal: 16,
     paddingVertical: 12,
-    borderRadius: 16,
-  },
-  botMessage: {
-    backgroundColor: 'white',
-    borderBottomLeftRadius: 4,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
   },
   userMessage: {
     backgroundColor: '#2563EB',
-    borderBottomRightRadius: 4,
+    borderRadius: 18,
+    borderBottomRightRadius: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
   },
   messageText: {
     fontSize: 15,
-    lineHeight: 20,
+    lineHeight: 22,
     fontFamily: 'Inter-Regular',
   },
   botMessageText: {
@@ -372,59 +371,51 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: 'Inter-Regular',
   },
-  moodSelector: {
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    backgroundColor: 'white',
-    borderTopWidth: 1,
-    borderTopColor: '#E2E8F0',
-  },
-  moodTitle: {
-    fontSize: 14,
-    color: '#64748B',
-    fontFamily: 'Inter-Medium',
-    marginBottom: 12,
-  },
-  moodButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-  },
-  moodButton: {
-    alignItems: 'center',
-    gap: 4,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 12,
-    backgroundColor: '#F1F5F9',
-  },
-  moodButtonText: {
-    fontSize: 12,
-    color: '#475569',
-    fontFamily: 'Inter-Medium',
-  },
   inputContainer: {
     backgroundColor: 'white',
     borderTopWidth: 1,
-    borderTopColor: '#E2E8F0',
+    borderTopColor: '#E5E7EB',
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    borderBottomWidth: 1,
+    borderLeftColor: '#E5E7EB',
+    borderRightColor: '#E5E7EB',
+    borderBottomColor: '#E5E7EB',
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    paddingBottom: 0,
   },
   inputWrapper: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-end',
     paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingTop: 16,
+    paddingBottom: 130,
     gap: 12,
+    backgroundColor: 'white',
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    borderBottomWidth: 1,
+    borderLeftColor: '#E5E7EB',
+    borderRightColor: '#E5E7EB',
+    borderBottomColor: '#E5E7EB',
   },
   textInput: {
     flex: 1,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderWidth: 2,
+    borderColor: '#CBD5E1',
     borderRadius: 20,
     paddingHorizontal: 16,
     paddingVertical: 12,
     fontSize: 15,
     fontFamily: 'Inter-Regular',
     color: '#1E293B',
+    backgroundColor: 'white',
     maxHeight: 100,
+    minHeight: 44,
   },
   sendButton: {
     width: 44,
@@ -437,4 +428,60 @@ const styles = StyleSheet.create({
   sendButtonDisabled: {
     backgroundColor: '#F1F5F9',
   },
+  clearButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // High contrast styles
+  highContrastText: {
+    color: '#1E40AF',
+  },
+  highContrastBotBubble: {
+    backgroundColor: '#EFF6FF',
+    borderWidth: 2,
+    borderColor: '#BFDBFE',
+  },
+  highContrastUserBubble: {
+    backgroundColor: '#1E40AF',
+  },
+  highContrastBotText: {
+    color: '#1E293B',
+    fontWeight: '500',
+  },
+  highContrastUserText: {
+    color: 'white',
+    fontWeight: '500',
+  },
+  highContrastInput: {
+    borderColor: '#BFDBFE',
+    backgroundColor: '#F8FAFC',
+    color: '#0F172A',
+    borderWidth: 2,
+  },
+  highContrastSendButton: {
+    backgroundColor: '#BFDBFE',
+  },
+  fullContainer: {
+    flex: 1,
+    backgroundColor: 'white',
+  },
+  dotsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 10,
+  },
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#64748B',
+    marginHorizontal: 2,
+  },
 });
+
+export default ChatScreen;
