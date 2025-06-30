@@ -51,6 +51,7 @@ export default function MemoriesScreen() {
   const [currentPresentationIndex, setCurrentPresentationIndex] = useState(0);
   const [musicPlaying, setMusicPlaying] = useState(false);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [presentationMemories, setPresentationMemories] = useState<Memory[]>([]);
   const presentationTimerRef = useRef<NodeJS.Timeout | number | null>(null);
   const soundRef = useRef<Audio.Sound | null>(null);
 
@@ -240,6 +241,26 @@ export default function MemoriesScreen() {
    );
  };
 
+ const showPresentationOptions = () => {
+   Alert.alert(
+     'Presentation Mode',
+     'Choose how you want to play your memories',
+     [
+       {
+         text: 'Play All',
+         onPress: () => startPresentation()
+       },
+       ...categoryOptions.map(category => ({
+         text: `${category} Only`,
+         onPress: () => startPresentation(category)
+       })),
+       {
+         text: 'Cancel',
+         style: 'cancel'
+       }
+     ]
+   );
+ };
 
  const addMemory = async () => {
    try {
@@ -291,7 +312,6 @@ export default function MemoriesScreen() {
    setModalVisible(false);
    setPendingImage(null);
    setLoading(false);
-   Alert.alert('Success', 'Memory added to your timeline!');
  };
 
 
@@ -331,28 +351,47 @@ export default function MemoriesScreen() {
 
  // Navigation functions for fullscreen mode
  const goToPreviousMemory = () => {
-   if (currentMemoryIndex > 0) {
-     const newIndex = currentMemoryIndex - 1;
-     setCurrentMemoryIndex(newIndex);
-     setSelectedMemory(memories[newIndex]);
-   }
+  const memoryArray = presentationMode ? presentationMemories : memories;
+  const currentIndex = presentationMode ? currentPresentationIndex : currentMemoryIndex;
+  
+  if (currentIndex > 0) {
+    const newIndex = currentIndex - 1;
+    if (presentationMode) {
+      setCurrentPresentationIndex(newIndex);
+    } else {
+      setCurrentMemoryIndex(newIndex);
+    }
+    setSelectedMemory(memoryArray[newIndex]);
+  }
  };
 
 
  const goToNextMemory = () => {
-   if (currentMemoryIndex < memories.length - 1) {
-     const newIndex = currentMemoryIndex + 1;
-     setCurrentMemoryIndex(newIndex);
-     setSelectedMemory(memories[newIndex]);
-   }
+  const memoryArray = presentationMode ? presentationMemories : memories;
+  const currentIndex = presentationMode ? currentPresentationIndex : currentMemoryIndex;
+  
+  if (currentIndex < memoryArray.length - 1) {
+    const newIndex = currentIndex + 1;
+    if (presentationMode) {
+      setCurrentPresentationIndex(newIndex);
+    } else {
+      setCurrentMemoryIndex(newIndex);
+    }
+    setSelectedMemory(memoryArray[newIndex]);
+  }
  };
 
 
- // Update the setSelectedMemory function to also set the index
+ // Also update the selectMemory function to handle presentation mode
  const selectMemory = (memory: Memory) => {
-   const index = memories.findIndex(m => m.id === memory.id);
-   setCurrentMemoryIndex(index);
-   setSelectedMemory(memory);
+  if (presentationMode) {
+    const index = presentationMemories.findIndex(m => m.id === memory.id);
+    setCurrentPresentationIndex(index);
+  } else {
+    const index = memories.findIndex(m => m.id === memory.id);
+    setCurrentMemoryIndex(index);
+  }
+  setSelectedMemory(memory);
  };
 
 
@@ -393,20 +432,30 @@ export default function MemoriesScreen() {
  });
 
 
- const startPresentation = async () => {
+ const startPresentation = async (selectedCategory?: string) => {
    if (memories.length === 0) {
      Alert.alert('No memories', 'Add some memories to start a presentation');
      return;
    }
+
+   let filteredMemories = memories;
+   if (selectedCategory) {
+     filteredMemories = memories.filter(memory => memory.category === selectedCategory);
+     if (filteredMemories.length === 0) {
+       Alert.alert('No memories found', `No memories found in ${selectedCategory} category`);
+       return;
+     }
+   }
+
+   setPresentationMemories(filteredMemories);
    setPresentationMode(true);
    setCurrentPresentationIndex(0);
-   setSelectedMemory(memories[0]);
+   setSelectedMemory(filteredMemories[0]);
    startPresentationTimer();
-  
+    
    // Start background music
    await playBackgroundMusic();
  };
-
 
  const startPresentationTimer = () => {
    presentationTimerRef.current = setTimeout(() => {
@@ -420,16 +469,15 @@ export default function MemoriesScreen() {
      clearTimeout(presentationTimerRef.current);
    }
 
-
    setCurrentPresentationIndex(prevIndex => {
      const nextIndex = prevIndex + 1;
     
-     if (nextIndex >= memories.length) {
+     if (nextIndex >= presentationMemories.length) {
        // End of presentation
        endPresentation();
        return prevIndex; // Don't change the index if ending
      } else {
-       setSelectedMemory(memories[nextIndex]);
+       setSelectedMemory(presentationMemories[nextIndex]);
        // Start the next timer
        startPresentationTimer();
        return nextIndex;
@@ -442,13 +490,14 @@ export default function MemoriesScreen() {
    setPresentationMode(false);
    setSelectedMemory(null);
    setCurrentPresentationIndex(0);
+   setPresentationMemories([]);
    if (presentationTimerRef.current) {
      clearTimeout(presentationTimerRef.current);
    }
   
    // Stop background music
    await stopBackgroundMusic();
-  
+   
    Alert.alert('Presentation Complete', 'You\'ve viewed all your memories!');
  };
 
@@ -457,6 +506,7 @@ export default function MemoriesScreen() {
    setPresentationMode(false);
    setSelectedMemory(null);
    setCurrentPresentationIndex(0);
+   setPresentationMemories([]);
    if (presentationTimerRef.current) {
      clearTimeout(presentationTimerRef.current);
    }
@@ -483,7 +533,6 @@ export default function MemoriesScreen() {
            setMemories(updatedMemories);
            await saveMemories(updatedMemories);
            setSelectedMemory(null);
-           Alert.alert('Success', 'Memory deleted successfully');
          },
        },
      ]
@@ -572,7 +621,7 @@ export default function MemoriesScreen() {
          <View style={styles.headerButtons}>
            <TouchableOpacity
              style={styles.headerButton}
-             onPress={startPresentation}
+             onPress={showPresentationOptions}
              disabled={loading || memories.length === 0}
            >
              <Play size={24} color={memories.length === 0 ? "#CBD5E1" : "#2563EB"} />
@@ -671,7 +720,7 @@ export default function MemoriesScreen() {
                  )}
                </TouchableOpacity>
                <Text style={styles.presentationCounter}>
-                 {currentPresentationIndex + 1} / {memories.length}
+                 {currentPresentationIndex + 1} / {presentationMemories.length}
                </Text>
                <TouchableOpacity
                  style={styles.presentationButton}
@@ -1048,4 +1097,5 @@ const styles = StyleSheet.create({
    marginRight: 8,
  },
 });
+
 
