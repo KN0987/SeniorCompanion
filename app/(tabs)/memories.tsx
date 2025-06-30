@@ -448,12 +448,18 @@ export default function MemoriesScreen() {
      }
    }
 
+   // Clear any existing timer first
+   if (presentationTimerRef.current) {
+     clearTimeout(presentationTimerRef.current);
+     presentationTimerRef.current = null;
+   }
+
+   // Set all states together to avoid race conditions
    setPresentationMemories(filteredMemories);
-   setPresentationMode(true);
    setCurrentPresentationIndex(0);
    setSelectedMemory(filteredMemories[0]);
-   startPresentationTimer();
-    
+   setPresentationMode(true);
+   
    // Start background music
    await playBackgroundMusic();
  };
@@ -471,6 +477,10 @@ export default function MemoriesScreen() {
   }
 
   setCurrentPresentationIndex(prevIndex => {
+    // Add safety check to prevent invalid index
+    if (presentationMemories.length === 0) {
+      return 0;
+    }
     const nextIndex = (prevIndex + 1) % presentationMemories.length;
     return nextIndex;
   });
@@ -479,40 +489,58 @@ export default function MemoriesScreen() {
 // Add useEffect to handle presentation index changes
 useEffect(() => {
   if (presentationMode && presentationMemories.length > 0) {
+    // Add bounds checking to prevent NaN or invalid indices
+    const safeIndex = Math.max(0, Math.min(currentPresentationIndex, presentationMemories.length - 1));
+    
+    if (safeIndex !== currentPresentationIndex) {
+      setCurrentPresentationIndex(safeIndex);
+      return;
+    }
+    
     // Update selected memory
-    setSelectedMemory(presentationMemories[currentPresentationIndex]);
+    setSelectedMemory(presentationMemories[safeIndex]);
     
     // Continue presentation timer for continuous loop
+    if (presentationTimerRef.current) {
+      clearTimeout(presentationTimerRef.current);
+    }
     startPresentationTimer();
   }
 }, [currentPresentationIndex, presentationMode, presentationMemories]);
 
 
  const endPresentation = async () => {
-   setPresentationMode(false);
-   setSelectedMemory(null);
-   setCurrentPresentationIndex(0);
-   setPresentationMemories([]);
+   // Clear timer first
    if (presentationTimerRef.current) {
      clearTimeout(presentationTimerRef.current);
+     presentationTimerRef.current = null;
    }
   
    // Stop background music
    await stopBackgroundMusic();
+  
+   // Reset all presentation states
+   setPresentationMode(false);
+   setSelectedMemory(null);
+   setCurrentPresentationIndex(0);
+   setPresentationMemories([]);
  };
 
-
  const stopPresentation = async () => {
-   setPresentationMode(false);
-   setSelectedMemory(null);
-   setCurrentPresentationIndex(0);
-   setPresentationMemories([]);
+   // Clear timer first
    if (presentationTimerRef.current) {
      clearTimeout(presentationTimerRef.current);
+     presentationTimerRef.current = null;
    }
   
    // Stop background music
    await stopBackgroundMusic();
+  
+   // Reset all presentation states
+   setPresentationMode(false);
+   setSelectedMemory(null);
+   setCurrentPresentationIndex(0);
+   setPresentationMemories([]);
  };
 
 
@@ -720,7 +748,7 @@ useEffect(() => {
                  )}
                </TouchableOpacity>
                <Text style={styles.presentationCounter}>
-                 {currentPresentationIndex + 1} / {presentationMemories.length}
+                 {presentationMemories.length > 0 ? `${currentPresentationIndex + 1} / ${presentationMemories.length}` : '0 / 0'}
                </Text>
                <TouchableOpacity
                  style={styles.presentationButton}
